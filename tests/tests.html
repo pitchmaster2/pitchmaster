@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Syllable Pitch Master Logic Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .summary {
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+        }
+
+        .summary.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .summary.failure {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .test-case {
+            margin-bottom: 10px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon {
+            font-weight: bold;
+            font-size: 1.2rem;
+            width: 24px;
+        }
+
+        .pass {
+            color: #28a745;
+        }
+
+        .fail {
+            color: #dc3545;
+        }
+
+        .desc {
+            flex-grow: 1;
+        }
+
+        .category {
+            font-size: 0.8rem;
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #666;
+            font-family: monospace;
+        }
+    </style>
+    <!-- Import Shared Logic -->
+    <script src="../logic.js"></script>
+</head>
+
+<body>
+    <h1>🛡️ Automated Logic Verifier</h1>
+    <div id="summary-area"></div>
+    <div id="results">Running tests...</div>
+
+    <script>
+        // ==========================================
+        // TEST RUNNER
+        // ==========================================
+
+        const results = document.getElementById('results');
+        results.innerHTML = "";
+        let passes = 0;
+        let fails = 0;
+
+        function runTest(category, desc, condition) {
+            const div = document.createElement('div');
+            div.className = 'test-case';
+            if (condition) {
+                div.innerHTML = `<span class="icon pass">✔</span> <span class="category">${category}</span> <span class="desc">${desc}</span>`;
+                passes++;
+            } else {
+                div.innerHTML = `<span class="icon fail">✘</span> <span class="category">${category}</span> <span class="desc" style="color:#d63031">${desc}</span>`;
+                fails++;
+            }
+            results.appendChild(div);
+        }
+
+        // Helper for persistence test simulation
+        function saveLoadLogic(originalData) {
+            const json = JSON.stringify(originalData);
+            const loaded = JSON.parse(json);
+            return loaded;
+        }
+
+        function runSuite() {
+            if (typeof Logic === 'undefined') {
+                results.innerHTML = "<div class='summary failure'>CRITICAL: logic.js not found!</div>";
+                return;
+            }
+
+            // --- SUITE 1: English Word Parsing (The "Stellar" Case) ---
+            // Using Logic.parseLine
+            const res1 = Logic.parseLine("Stellar");
+            runTest("PARSER", "English word 'Stellar' defaults to 1 note", res1.length === 1 && res1[0].pitches.length === 1);
+            runTest("PARSER", "English word 'Stellar' identified as 'english'", res1[0].type === 'english');
+
+            // --- SUITE 2: Sentence Parsing ---
+            const res2 = Logic.parseLine("Hello World");
+            // Expect: "Hello" (eng), " " (space), "World" (eng)
+            runTest("PARSER", "Sentence 'Hello World' splits into 3 units", res2.length === 3);
+            runTest("PARSER", "'Hello' is single note", res2[0].pitches.length === 1);
+            runTest("PARSER", "Space is detected", res2[1].type === 'space');
+            runTest("PARSER", "'World' is single note", res2[2].pitches.length === 1);
+
+            // --- SUITE 3: Apostrophes in English ---
+            const res3 = Logic.parseLine("Don't");
+            runTest("PARSER", "Word with apostrophe 'Don't' remains 1 unit", res3.length === 1 && res3[0].text === "Don't");
+
+            // --- SUITE 4: Reading Overrides (The "Override" Bug) ---
+            // Using Logic.calculatePitchCount
+            const count4 = Logic.calculatePitchCount({ type: 'english' }, "キャット");
+            runTest("OVERRIDE", "Reading 'キャット' creates 4 notes (Japanese Rule)", count4 === 4);
+
+            const count5 = Logic.calculatePitchCount({ type: 'english' }, "Ca");
+            runTest("OVERRIDE", "Reading 'Ca' creates 2 notes", count5 === 2);
+
+            const count6 = Logic.calculatePitchCount({ type: 'english' }, "");
+            runTest("OVERRIDE", "Empty reading resets to 1 note", count6 === 1);
+
+            // --- SUITE 5: Legacy Data Auto-Fix (The "5 Dots" Bug) ---
+            // Using Logic.migrateLineUnits
+            const legacyData = [
+                { type: 'english', text: "Hello", reading: "", pitches: ["c4", "c4", "c4", "c4", "c4"] }
+            ];
+            const changed = Logic.migrateLineUnits(legacyData);
+            runTest("MIGRATION", "Migration detects broken English notes", changed === true);
+            runTest("MIGRATION", "Migration collapses broken word to 1 note", legacyData[0].pitches.length === 1);
+
+            // --- SUITE 6: Migration Safety ---
+            // Scenario: English word has a valid reading override. Should NOT collapse.
+            const validOverrideData = [
+                { type: 'english', text: "Cat", reading: "キャット", pitches: ["c4", "c4", "c4", "c4"] }
+            ];
+            const changed2 = Logic.migrateLineUnits(validOverrideData);
+            runTest("MIGRATION", "Migration ignores valid overrides", changed2 === false);
+            runTest("MIGRATION", "Valid override retains note count", validOverrideData[0].pitches.length === 4);
+
+            // --- SUITE 7: Visual Visibility (The "Invisible Edge" Bug) ---
+            // Using Logic.getPointRadius
+            const edgeStyle = { edge: true, dynamic: 'n' };
+            const normalStyle = { edge: false, dynamic: 'n' };
+
+            runTest("VISUAL", "Normal note radius is 6", Logic.getPointRadius(normalStyle) === 6);
+            runTest("VISUAL", "Edge Voice radius is boosted to >=12", Logic.getPointRadius(edgeStyle) >= 12);
+
+            // --- SUITE 8: Persistence Logic (Save/Load) ---
+            const complexSong = {
+                id: "s123",
+                title: "Test Song",
+                lines: [{
+                    units: [
+                        {
+                            text: "Star",
+                            type: "english",
+                            pitches: ["c4"],
+                            styles: [{ edge: true, dynamic: 'ff', shakuri: true }]
+                        },
+                        {
+                            text: "猫",
+                            type: "kanji",
+                            reading: "ねこ",
+                            pitches: ["c4", "d4"],
+                            accents: [false, true]
+                        }
+                    ]
+                }]
+            };
+
+            const loadedData = saveLoadLogic(complexSong);
+
+            runTest("PERSISTENCE", "Data integrity check (Title)", loadedData.title === "Test Song");
+            runTest("PERSISTENCE", "Nested array preserved (Pitches)", loadedData.lines[0].units[1].pitches.length === 2);
+            runTest("PERSISTENCE", "Boolean in accents preserved", loadedData.lines[0].units[1].accents[1] === true);
+            runTest("PERSISTENCE", "Complex Style Object preserved (Edge)", loadedData.lines[0].units[0].styles[0].edge === true);
+            runTest("PERSISTENCE", "Complex Style Object preserved (Shakuri)", loadedData.lines[0].units[0].styles[0].shakuri === true);
+            runTest("PERSISTENCE", "English text integrity", loadedData.lines[0].units[0].text === "Star");
+
+            // --- SUITE 9: Parser Edge Cases ---
+            const resPunct = Logic.parseLine("Hi!");
+            // "Hi" (eng), "!" (kana/other)
+            runTest("PARSER", "Punctuation '!' parsed as separate unit (kana/other)", resPunct.length === 2 && resPunct[1].type !== 'space');
+
+            const resHyphen = Logic.parseLine("Start-End");
+            // "Start-End" (eng, due to regex [A-Za-z0-9']+(?:-[A-Za-z0-9']+)*)
+            runTest("PARSER", "Hyphenated word 'Start-End' parsed as single English unit", resHyphen.length === 1 && resHyphen[0].type === 'english');
+
+            const resMixed = Logic.parseLine("Star猫");
+            // "Star" (eng), "猫" (kanji)
+            runTest("PARSER", "Mixed script 'Star猫' parsed as 2 units", resMixed.length === 2);
+            runTest("PARSER", "Mixed script separation correct", resMixed[0].text === "Star" && resMixed[1].text === "猫");
+
+            // --- SUITE 10: Robustness ---
+            const countSafe = Logic.calculatePitchCount({ type: 'english' }, null);
+            runTest("ROBUSTNESS", "calculatePitchCount handles null reading", countSafe === 1);
+
+            const resEmpty = Logic.parseLine("");
+            runTest("ROBUSTNESS", "parseLine handles empty string", resEmpty.length === 0);
+
+            // --- SUITE 11: Visual Logic & Dynamics ---
+            const dynamics = ['pp', 'p', 'mp', 'n', 'mf', 'f', 'ff'];
+            let lastRadius = 0;
+            let radiusMonotonic = true;
+            dynamics.forEach(d => {
+                const r = Logic.getPointRadius({ dynamic: d });
+                if (r < lastRadius) radiusMonotonic = false;
+                lastRadius = r;
+            });
+            runTest("VISUAL", "Dynamic radii are monotonic (pp -> ff)", radiusMonotonic === true);
+
+            const rUnknown = Logic.getPointRadius({ dynamic: 'unknown' });
+            runTest("VISUAL", "Unknown dynamic defaults to 'n' (radius 6)", rUnknown === 6);
+
+            // --- SUITE 12: Pitch Logic (New Extraction) ---
+
+            // 12.1 Initialization
+            Logic.init();
+            runTest("PITCH", "PITCH_MAP initialized", Object.keys(Logic.PITCH_MAP).length > 0);
+
+            // 12.2 Helpers
+            runTest("PITCH", "midiFromPitch('c4') is 60", Logic.midiFromPitch('c4') === 60);
+            runTest("PITCH", "midiFromPitch('a4') is 69", Logic.midiFromPitch('a4') === 69);
+            runTest("PITCH", "pitchFromMidi(60) is 'c4'", Logic.pitchFromMidi(60) === 'c4');
+            runTest("PITCH", "isValidPitch('c#4') is true", Logic.isValidPitch('c#4') === true);
+            runTest("PITCH", "isValidPitch('xyz') is false", Logic.isValidPitch('xyz') === false);
+
+            // 12.3 midiToFreq
+            // A4 = 440Hz
+            const freqA4 = Logic.midiToFreq(69);
+            runTest("PITCH", "midiToFreq(69) is 440", Math.abs(freqA4 - 440) < 0.01);
+            // C4 = ~261.63Hz
+            const freqC4 = Logic.midiToFreq(60);
+            runTest("PITCH", "midiToFreq(60) is ~261.63", Math.abs(freqC4 - 261.625) < 0.01);
+
+            // 12.4 getNextPitch
+            runTest("PITCH", "getNextPitch('c4', 1) -> 'c#4'", Logic.getNextPitch('c4', 1) === 'c#4');
+            runTest("PITCH", "getNextPitch('b4', 1) -> 'c5'", Logic.getNextPitch('b4', 1) === 'c5');
+            runTest("PITCH", "getNextPitch('c4', -1) -> 'b3'", Logic.getNextPitch('c4', -1) === 'b3');
+            // Boundary checks (assuming range C3=48 to C6=84)
+            runTest("PITCH", "getNextPitch('c6', 1) clamps (returns 'c6' or null depending on impl, expecting 'c6')", Logic.getNextPitch('c6', 1) === 'c6');
+
+            // 12.5 transposeUnits
+            const tUnits = [
+                { pitches: ['c4', 'e4'] },
+                { pitches: ['g4'] }
+            ];
+            // Transpose +2 semitones (C->D, E->F#)
+            const tChanged = Logic.transposeUnits(tUnits, 2);
+            runTest("PITCH", "transposeUnits returns true on change", tChanged === true);
+            runTest("PITCH", "transposeUnits updates pitches C4->D4", tUnits[0].pitches[0] === 'd4');
+            runTest("PITCH", "transposeUnits updates pitches E4->f#4", tUnits[0].pitches[1] === 'f#4');
+
+
+            // Summary Render
+            const summaryArea = document.getElementById('summary-area');
+            if (fails === 0) {
+                summaryArea.className = "summary success";
+                summaryArea.innerText = `All ${passes} tests PASSED. The logic is solid.`;
+            } else {
+                summaryArea.className = "summary failure";
+                summaryArea.innerText = `${fails} tests FAILED. Check logic immediately.`;
+            }
+        }
+
+        runSuite();
+    </script>
+</body>
+
+</html>

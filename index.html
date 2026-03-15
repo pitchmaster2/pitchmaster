@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syllable Pitch Master V2</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.3/dist/chartjs-plugin-dragdata.min.js"></script>
+    <!-- SHARED LOGIC -->
+    <script src="logic.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <!-- GOOGLE CLOUD BACKUP -->
+    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+</head>
+
+<body>
+
+    <div id="app-container">
+        <div class="overlay" onclick="toggleSidebar()"></div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal">
+            <h4>Note Settings</h4>
+            <div class="modal-row">
+                <label class="modal-label">
+                    <input type="checkbox" id="modal-accent" onchange="applyModalSettings()"> Accent (核)
+                </label>
+                <span style="color:#e67e22;">★</span>
+            </div>
+            <div class="modal-row">
+                <label class="modal-label">
+                    <input type="checkbox" id="modal-shakuri" onchange="applyModalSettings()"> Shakuri (しゃくり)
+                </label>
+                <span style="font-size:1.2rem; color:#e67e22;">⤴</span>
+            </div>
+            <div class="modal-row">
+                <label class="modal-label">
+                    <input type="checkbox" id="modal-edge" onchange="applyModalSettings()"> Edge Voice
+                </label>
+                <span>✨</span>
+            </div>
+            <div style="margin-top:10px;">
+                <label style="font-size:0.8rem; color:#666;">Dynamics (強弱):</label>
+                <select id="modal-dynamic" class="modal-select" onchange="applyModalSettings()">
+                    <option value="pp">pp (Very Soft)</option>
+                    <option value="p">p (Soft)</option>
+                    <option value="mp">mp</option>
+                    <option value="n">Normal</option>
+                    <option value="mf">mf</option>
+                    <option value="f">f (Loud)</option>
+                    <option value="ff">ff (Very Loud)</option>
+                </select>
+            </div>
+            <div style="margin-top:10px; text-align:right;">
+                <button class="btn btn-outline" style="padding:4px 10px; font-size:0.8rem;"
+                    onclick="closeModal()">Close</button>
+            </div>
+        </div>
+
+        <!-- Custom Confirmation Modal -->
+        <div id="confirm-modal" class="modal-overlay">
+            <div class="modal-card">
+                <h4 id="confirm-title">確認</h4>
+                <p id="confirm-msg" style="margin: 15px 0; color: #666;"></p>
+                <div class="modal-footer" style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button id="confirm-cancel" class="btn btn-outline">キャンセル</button>
+                    <button id="confirm-ok" class="btn btn-danger">削除する</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Prompt Modal -->
+        <div id="prompt-modal" class="modal-overlay">
+            <div class="modal-card">
+                <h4 id="prompt-title">入力</h4>
+                <div class="modal-body" style="margin: 15px 0;">
+                    <p id="prompt-msg" style="color: #666; margin-bottom: 10px;"></p>
+                    <input type="text" id="prompt-input"
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div class="modal-footer" style="display:flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button id="prompt-cancel" class="btn btn-outline">キャンセル</button>
+                    <button id="prompt-ok" class="btn btn-primary">OK</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Alert Modal -->
+        <div id="alert-modal" class="modal-overlay">
+            <div class="modal-card">
+                <h4 id="alert-title">通知</h4>
+                <p id="alert-msg" style="margin: 15px 0; color: #666;"></p>
+                <div class="modal-footer" style="display:flex; justify-content: flex-end; margin-top: 20px;">
+                    <button id="alert-ok" class="btn btn-primary">閉じる</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="sidebar">
+            <div class="brand">
+                <span>Pitch Master V2</span>
+            </div>
+            <div class="sidebar-content">
+                <button onclick="createNew()" class="btn btn-primary" style="width:100%; margin-bottom:15px;">+
+                    新しい曲</button>
+                <div id="list"></div>
+            </div>
+            <div class="sidebar-footer">
+                <div class="cloud-sync-section">
+                    <div class="cloud-sync-header">
+                        <span>Cloud Sync</span>
+                        <div id="cloud-status-indicator" class="cloud-status">
+                            <div class="cloud-dot"></div>
+                            <span id="cloud-status-text">オフライン</span>
+                        </div>
+                    </div>
+                    <div id="cloud-user-info" class="user-info" style="display:none;">
+                        <img id="user-pfp" class="user-img" src="" alt="">
+                        <span id="user-name"></span>
+                    </div>
+                    <div id="cloud-login-btn-container">
+                        <!-- GSI button will be rendered here -->
+                        <button onclick="handleAuthClick()" class="btn btn-primary"
+                            style="width:100%; font-size:0.8rem; height:36px;">
+                            Googleでログイン
+                        </button>
+                    </div>
+                    <div id="cloud-sync-actions" class="cloud-btns" style="display:none;">
+                        <button id="cloud-backup-btn" onclick="backupToCloud()" class="btn btn-outline"
+                            style="font-size:0.75rem; padding:6px 4px;">
+                            ☁️ バックアップ
+                        </button>
+                        <button id="cloud-restore-btn" onclick="restoreFromCloud()" class="btn btn-outline"
+                            style="font-size:0.75rem; padding:6px 4px;">
+                            ♻️ リストア
+                        </button>
+                        <button onclick="handleSignoutClick()" class="btn btn-secondary"
+                            style="grid-column: span 2; font-size:0.75rem; padding:4px;">
+                            サインアウト
+                        </button>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" onclick="exportData()"
+                    style="width:100%; margin-bottom:8px; font-size:0.8rem;">JSON書き出し</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()"
+                    style="width:100%; font-size:0.8rem;">JSON読み込み</button>
+                <input type="file" id="importFile" style="display:none" onchange="importData(event)">
+            </div>
+        </div>
+        <div class="resizer-h" id="sidebar-resizer"></div>
+
+        <div id="main">
+            <div id="empty-state">
+                <h2>曲を選択または作成してください</h2>
+                <button onclick="toggleSidebar()" class="btn btn-primary">メニューを開く</button>
+            </div>
+
+            <div id="editor" style="display:none; height: 100%; flex-direction: column;">
+                <div class="pinned-header">
+                    <div class="header-top">
+                        <div style="display:flex; align-items:center;">
+                            <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+                            <span id="save-dot" class="save-indicator" title="未保存の変更"></span>
+                            <h2 id="title-display" style="margin:0; font-size:1.2rem;"></h2>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button onclick="openLyricsModal()" class="btn btn-outline">歌詞編集</button>
+                            <button onclick="saveCurrent(true)" class="btn btn-success">保存</button>
+                        </div>
+                    </div>
+
+                    <div class="chart-nav-row">
+                        <div class="chart-box">
+                            <canvas id="pitchChart"></canvas>
+                        </div>
+                        <div class="resizer-h" id="chart-resizer"></div>
+
+                        <div id="lyrics-nav-panel">
+                            <div class="nav-header">
+                                <h4>歌詞ナビ</h4>
+                                <div style="display:flex; align-items:center; gap:5px;">
+                                    <span style="font-size:0.75rem; color:#666;">Line:</span>
+                                    <input type="number" id="nav-line-jump" min="1" step="1"
+                                        style="width:45px; padding:2px 4px; border:1px solid #ddd; border-radius:4px; font-size:0.85rem; text-align:center;"
+                                        onchange="handleLineJump(this.value)"
+                                        onkeydown="if(event.key==='Enter') this.blur()">
+                                </div>
+                            </div>
+                            <div id="lyrics-nav-list" style="overflow-y:auto; flex-grow:1;"></div>
+                        </div>
+                    </div>
+
+                    <div class="toolbar">
+                        <button class="btn btn-primary" onclick="playCurrentLine()">▶ 再生</button>
+
+                        <div style="height:20px; width:1px; background:#ddd; margin:0 5px;"></div>
+
+                        <span style="font-size:0.8rem; color:#7f8c8d;">移調:</span>
+                        <button class="btn btn-outline btn-icon" onclick="transposeLine(-1)" title="半音下げる">♭</button>
+                        <button class="btn btn-outline btn-icon" onclick="transposeLine(1)" title="半音上げる">♯</button>
+
+                        <div style="height:20px; width:1px; background:#ddd; margin:0 5px;"></div>
+
+                        <button id="joinBtn" class="btn btn-outline" onclick="joinWithNextLine()" title="下の行と結合">
+                            🔗 下の行と結合
+                        </button>
+                    </div>
+                </div>
+                <div class="resizer-v" id="header-resizer"></div>
+
+                <div id="content-scroll">
+                    <div id="lyrics-container" class="card">
+                        <!-- Syllables render here -->
+                    </div>
+
+                    <div id="lyric-editor-card" class="card">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                            <h3 style="border:none; margin:0; padding:0;">原文 / 歌詞編集</h3>
+                            <button onclick="processLyrics()" class="btn btn-primary"
+                                style="font-size:0.8rem;">歌詞を反映してリセット</button>
+                        </div>
+                        <p style="font-size:0.8rem; color:#666; margin-top:0;">※
+                            漢字、英語、ひらがなを自動判別します。ここを変更して反映ボタンを押すと、現在のピッチデータはリセットされます。</p>
+                        <textarea id="lyric-in" placeholder="ここに歌詞を入力..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lyrics Editing Modal -->
+    <div id="lyrics-modal-overlay" onclick="closeLyricsModal()"></div>
+    <div id="lyrics-modal">
+        <div class="modal-header">
+            <h3>歌詞編集</h3>
+            <button class="btn-icon" style="background:none; border:none; font-size:1.5rem; cursor:pointer;"
+                onclick="closeLyricsModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:0.8rem; color:#666; margin-top:0;">※ 歌詞を反映すると、現在のピッチデータはリセットされます。</p>
+            <textarea id="modal-lyric-in" placeholder="ここに歌詞を入力..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeLyricsModal()">キャンセル</button>
+            <button class="btn btn-primary" onclick="applyLyricsModal()">歌詞を反映してリセット</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Config & State ---
+        const STORAGE_KEY = 'singer_app_v2';
+        let songs = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        let currentId = null;
+        let chart = null;
+        let activeLineIdx = 0;
+        let currentDataMeta = [];
+        let isDirty = false;
+        let audioCtx = null;
+        let editingTarget = null; // {l, u, p} for modal
+
+        // Pitch Range: C3 (48) to C6 (84)
+        // Pitch Range: C3 (48) to C6 (84)
+        // Moved to Logic.init() which is called on demand or at startup
+        Logic.init();
+
+        const shakuriPlugin = {
+            id: 'shakuriCurve',
+            beforeDatasetsDraw: (chart) => {
+                const meta = chart.getDatasetMeta(0);
+                meta.data.forEach((point, index) => {
+                    if (index === 0) return;
+                    const prev = meta.data[index - 1];
+                    const pointMeta = currentDataMeta[index];
+                    if (pointMeta && pointMeta.shakuri) {
+                        const dx = point.x - prev.x;
+                        // Manual "dip" for Shakuri - DRAMATIC VERSION
+                        prev.cp2x = prev.x + (dx * 0.4);
+                        prev.cp2y = prev.y + 35;
+                        point.cp1x = point.x - (dx * 0.1);
+                        point.cp1y = point.y;
+                    }
+                });
+            }
+        };
+        Chart.register(shakuriPlugin);
+
+        // --- Audio Engine ---
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playTone(freq, startTime, duration, type = 'sine') {
+            if (!audioCtx) initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = type;
+            osc.frequency.value = freq;
+
+            // Envelope to avoid clicking
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+            gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(startTime);
+            osc.stop(startTime + duration + 0.1);
+        }
+
+        // midiToFreq moved to Logic.midiToFreq
+
+        function playNoteName(noteName, duration = 0.3) {
+            const midi = Logic.midiFromPitch(noteName);
+            if (midi) {
+                initAudio();
+                playTone(Logic.midiToFreq(midi), audioCtx.currentTime, duration);
+            }
+        }
+
+        function playCurrentLine() {
+            initAudio();
+            if (!songs[currentId]) return;
+            const line = songs[currentId].lines[activeLineIdx];
+            if (!line) return;
+
+            let now = audioCtx.currentTime;
+            const noteDuration = 0.4; // sec
+
+            line.units.forEach(u => {
+                if (u.type === 'space') {
+                    now += 0.2; // slight pause
+                    return;
+                }
+                u.pitches.forEach(p => {
+                    const midi = Logic.midiFromPitch(p);
+                    if (midi) {
+                        playTone(Logic.midiToFreq(midi), now, noteDuration);
+                    }
+                    now += noteDuration;
+                });
+            });
+        }
+
+        // --- Core Logic ---
+
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+        });
+
+        window.addEventListener('click', (e) => {
+            const modal = document.getElementById('settings-modal');
+            if (modal.style.display === 'block' && !modal.contains(e.target) && !e.target.classList.contains('settings-btn')) {
+                closeModal();
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            // Global hotkeys for line navigation
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                changeActiveLine(-1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                changeActiveLine(1);
+            }
+        });
+
+        function setDirty(val) {
+            isDirty = val;
+            const dot = document.getElementById('save-dot');
+            if (dot) val ? dot.classList.add('dirty') : dot.classList.remove('dirty');
+        }
+
+        function createNew() {
+            const proceed = () => {
+                showPrompt("新しい曲", "曲のタイトルを入力してください：", (name) => {
+                    let id = 's' + Date.now();
+                    songs[id] = { title: name, lyrics: "", lines: [] };
+                    currentId = id;
+                    activeLineIdx = 0;
+                    saveCurrent();
+                    updateSidebar();
+                    loadSong(id, true); // Added force flag to skip dirty check
+                    if (window.innerWidth <= 768) toggleSidebar();
+                });
+            };
+
+            if (isDirty) {
+                showConfirm("注意", "保存されていない変更がありますが、破棄しますか？", proceed, "破棄して新規作成");
+            } else {
+                proceed();
+            }
+        }
+
+        function loadSong(id, force = false) {
+            const proceed = () => {
+                currentId = id;
+                activeLineIdx = 0;
+                setDirty(false);
+                document.getElementById('empty-state').style.display = 'none';
+                document.getElementById('editor').style.display = 'flex';
+
+                // Highlight in sidebar
+                document.querySelectorAll('.song-item').forEach(el => el.classList.remove('active'));
+                const activeBtn = document.querySelector(`button[onclick="loadSong('${id}')"]`);
+                if (activeBtn) activeBtn.parentElement.classList.add('active');
+
+                render();
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar').classList.remove('open');
+                    document.querySelector('.overlay').classList.remove('active');
+                }
+            };
+
+            if (isDirty && !force) {
+                showConfirm("注意", "保存されていない変更がありますが、破棄しますか？", proceed, "破棄して読み込む");
+            } else {
+                proceed();
+            }
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const ov = document.querySelector('.overlay');
+            sb.classList.toggle('open');
+            ov.classList.toggle('active');
+        }
+
+        function changeActiveLine(dir) {
+            const total = songs[currentId].lines.length;
+            const newIdx = activeLineIdx + dir;
+            if (newIdx >= 0 && newIdx < total) {
+                jumpToLine(newIdx);
+            }
+        }
+
+        function jumpToLine(idx) {
+            activeLineIdx = idx;
+            closeModal();
+            render();
+            // Scroll to top of content when switching lines
+            document.getElementById('content-scroll').scrollTop = 0;
+
+            // Sync nav input
+            const navJump = document.getElementById('nav-line-jump');
+            if (navJump) navJump.value = idx + 1;
+        }
+
+        function handleLineJump(val) {
+            const idx = parseInt(val) - 1;
+            const total = songs[currentId].lines.length;
+            if (!isNaN(idx) && idx >= 0 && idx < total) {
+                jumpToLine(idx);
+            } else {
+                // Reset to current index if invalid
+                document.getElementById('nav-line-jump').value = activeLineIdx + 1;
+            }
+        }
+
+        function processLyrics() {
+            showConfirm("確認", "現在の編集内容はリセットされます。よろしいですか？", () => {
+                const fullText = document.getElementById('lyric-in').value;
+                console.log('processLyrics fullText:', fullText);
+
+                // --- UPDATED: Use Shared Logic for Parsing ---
+                const newLines = fullText.split('\n').filter(l => l.trim() !== "").map(lineStr => {
+                    const units = Logic.parseLine(lineStr);
+                    return { raw: lineStr, units: units };
+                });
+
+                songs[currentId].lines = newLines;
+                songs[currentId].lyrics = fullText;
+                activeLineIdx = 0;
+                setDirty(true);
+                render();
+            });
+        }
+
+        // --- Lyrics Modal Logic ---
+        function openLyricsModal() {
+            const song = songs[currentId];
+            if (!song) return;
+            document.getElementById('modal-lyric-in').value = song.lyrics || "";
+            document.getElementById('lyrics-modal').style.display = 'flex';
+            document.getElementById('lyrics-modal-overlay').style.display = 'block';
+        }
+
+        function closeLyricsModal() {
+            document.getElementById('lyrics-modal').style.display = 'none';
+            document.getElementById('lyrics-modal-overlay').style.display = 'none';
+        }
+
+        function applyLyricsModal() {
+            const newText = document.getElementById('modal-lyric-in').value;
+            showConfirm("確認", "歌詞を反映すると、現在のピッチデータはリセットされます。よろしいですか？", () => {
+                // This logic is now inside the confirm callback
+                const fullText = newText;
+                const newLines = fullText.split('\n').filter(l => l.trim() !== "").map(lineStr => {
+                    const units = Logic.parseLine(lineStr);
+                    return { raw: lineStr, units: units };
+                });
+
+                songs[currentId].lines = newLines;
+                songs[currentId].lyrics = fullText;
+                activeLineIdx = 0;
+                setDirty(true);
+                render();
+                closeLyricsModal();
+            });
+        }
+
+        function reindexUnits(units) {
+            let wc = 0;
+            units.forEach(u => {
+                const isSpace = u.type === 'space';
+                u.wordIndex = isSpace ? wc : wc++;
+            });
+        }
+
+        function updateGlobalLyrics() {
+            const song = songs[currentId];
+            song.lyrics = song.lines.map(l => l.raw).join('\n');
+        }
+
+        function splitLine(lIdx, uIdx) {
+            const song = songs[currentId];
+            const line = song.lines[lIdx];
+
+            // Tail units start from uIdx + 1
+            const headUnits = line.units.slice(0, uIdx + 1);
+            const tailUnits = line.units.slice(uIdx + 1);
+
+            // Reconstruct raw strings
+            const headRaw = headUnits.map(u => u.text).join('');
+            const tailRaw = tailUnits.map(u => u.text).join('');
+
+            // Update current line
+            line.units = headUnits;
+            line.raw = headRaw;
+            reindexUnits(line.units);
+
+            // Create new line
+            const newLine = {
+                raw: tailRaw,
+                units: tailUnits
+            };
+            reindexUnits(newLine.units);
+
+            // Insert into song.lines
+            song.lines.splice(lIdx + 1, 0, newLine);
+
+            updateGlobalLyrics();
+            setDirty(true);
+            render();
+        }
+
+        function joinWithNextLine() {
+            const song = songs[currentId];
+            const nextIdx = activeLineIdx + 1;
+            if (nextIdx >= song.lines.length) return;
+
+            const currentLine = song.lines[activeLineIdx];
+            const nextLine = song.lines[nextIdx];
+
+            // Merge units and raw
+            currentLine.units = [...currentLine.units, ...nextLine.units];
+            currentLine.raw = currentLine.raw + nextLine.raw;
+            reindexUnits(currentLine.units);
+
+            // Remove next line
+            song.lines.splice(nextIdx, 1);
+
+            updateGlobalLyrics();
+            setDirty(true);
+            render();
+        }
+
+        // --- Modal Logic ---
+
+        function openModal(lIdx, uIdx, pIdx, btnElem) {
+            const unit = songs[currentId].lines[lIdx].units[uIdx];
+            const isAccent = unit.accents && unit.accents[pIdx];
+
+            // Ensure styles object exists
+            if (!unit.styles) unit.styles = [];
+            if (!unit.styles[pIdx]) unit.styles[pIdx] = { shakuri: false, edge: false, dynamic: 'n' };
+
+            const style = unit.styles[pIdx];
+
+            editingTarget = { l: lIdx, u: uIdx, p: pIdx };
+
+            document.getElementById('modal-accent').checked = isAccent;
+            document.getElementById('modal-shakuri').checked = style.shakuri || false;
+            document.getElementById('modal-edge').checked = style.edge || false;
+            document.getElementById('modal-dynamic').value = style.dynamic || 'n';
+
+            const modal = document.getElementById('settings-modal');
+            const rect = btnElem.getBoundingClientRect();
+
+            modal.style.display = 'block';
+            modal.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+            modal.style.left = Math.max(10, rect.left + window.scrollX - 80) + 'px';
+        }
+
+        function closeModal() {
+            document.getElementById('settings-modal').style.display = 'none';
+            editingTarget = null;
+        }
+
+        function showConfirm(title, msg, onOk, okLabel = "OK", cancelLabel = "キャンセル") {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-msg').innerText = msg;
+
+            const okBtn = document.getElementById('confirm-ok');
+            const cancelBtn = document.getElementById('confirm-cancel');
+
+            // Unbind previous listeners
+            const newOkBtn = okBtn.cloneNode(true);
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+            newOkBtn.innerText = okLabel;
+            newCancelBtn.innerText = cancelLabel;
+
+            if (okLabel === "削除する") {
+                newOkBtn.classList.add('btn-danger');
+                newOkBtn.classList.remove('btn-primary'); // Ensure primary is removed if danger is added
+            } else {
+                newOkBtn.classList.remove('btn-danger');
+                newOkBtn.classList.add('btn-primary');
+            }
+
+            const close = () => {
+                modal.classList.remove('active');
+                window.removeEventListener('keydown', handleKey);
+            };
+
+            newOkBtn.onclick = () => {
+                close();
+                onOk();
+            };
+            newCancelBtn.onclick = () => {
+                close();
+            };
+
+            // Allow ENTER to confirm and ESC to cancel
+            const handleKey = (e) => {
+                if (e.key === 'Enter') {
+                    newOkBtn.click();
+                } else if (e.key === 'Escape') {
+                    newCancelBtn.click();
+                }
+            };
+            window.addEventListener('keydown', handleKey);
+
+            modal.classList.add('active');
+        }
+
+        function showPrompt(title, msg, onOk, defaultValue = "") {
+            const modal = document.getElementById('prompt-modal');
+            document.getElementById('prompt-title').innerText = title;
+            document.getElementById('prompt-msg').innerText = msg;
+            const input = document.getElementById('prompt-input');
+            input.value = defaultValue;
+
+            const okBtn = document.getElementById('prompt-ok');
+            const cancelBtn = document.getElementById('prompt-cancel');
+
+            const newOkBtn = okBtn.cloneNode(true);
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+            const close = () => {
+                modal.classList.remove('active');
+                window.removeEventListener('keydown', handleKey);
+            };
+
+            newOkBtn.onclick = () => {
+                const val = input.value.trim();
+                if (val) {
+                    close();
+                    onOk(val);
+                }
+            };
+            newCancelBtn.onclick = () => {
+                close();
+            };
+
+            const handleKey = (e) => {
+                if (e.key === 'Enter') {
+                    newOkBtn.click();
+                } else if (e.key === 'Escape') {
+                    newCancelBtn.click();
+                }
+            };
+            window.addEventListener('keydown', handleKey);
+
+            modal.classList.add('active');
+            setTimeout(() => input.focus(), 150);
+        }
+
+        function showAlert(title, msg) {
+            const modal = document.getElementById('alert-modal');
+            document.getElementById('alert-title').innerText = title;
+            document.getElementById('alert-msg').innerText = msg;
+
+            const okBtn = document.getElementById('alert-ok');
+            const newOkBtn = okBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+            const close = () => {
+                modal.classList.remove('active');
+                window.removeEventListener('keydown', handleKey);
+            };
+
+            newOkBtn.onclick = () => close();
+
+            const handleKey = (e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                    close();
+                }
+            };
+            window.addEventListener('keydown', handleKey);
+
+            modal.classList.add('active');
+        }
+
+        function applyModalSettings() {
+            if (!editingTarget) return;
+            const { l, u, p } = editingTarget;
+            const unit = songs[currentId].lines[l].units[u];
+
+            const isAccent = document.getElementById('modal-accent').checked;
+            const shakuri = document.getElementById('modal-shakuri').checked;
+            const edge = document.getElementById('modal-edge').checked;
+            const dynamic = document.getElementById('modal-dynamic').value;
+
+            if (!unit.accents) unit.accents = [];
+            unit.accents[p] = isAccent;
+
+            if (!unit.styles) unit.styles = [];
+            unit.styles[p] = { shakuri, edge, dynamic };
+
+            setDirty(true);
+
+            // Update specific unit UI and Chart
+            const wrapper = document.getElementById(`unit-bottom-${l}-${u}`);
+            if (wrapper) wrapper.innerHTML = renderUnitBottom(unit, l, u);
+            updateChart();
+        }
+
+        // Helper to generate the dynamic bottom part of a unit
+        function renderUnitBottom(unit, lIdx, uIdx) {
+            let inner = '';
+
+            unit.pitches.forEach((p, pIdx) => {
+                const isAccented = unit.accents && unit.accents[pIdx];
+                const style = (unit.styles && unit.styles[pIdx]) || {};
+
+                // Logic for English display characters
+                let displayChar;
+                if (unit.type === 'english') {
+                    // If only 1 note, show the Reading (if set) or full Text
+                    if (unit.pitches.length === 1) {
+                        displayChar = unit.reading || unit.text;
+                    } else {
+                        // Multiple notes: Japanese Override Rules (Char by Char)
+                        if (unit.reading && unit.reading.length > 0) {
+                            displayChar = unit.reading[pIdx] || "";
+                        } else {
+                            // Fallback if split but no reading (legacy data)
+                            displayChar = (pIdx === 0) ? unit.text : "";
+                        }
+                    }
+                } else {
+                    // Standard Kana/Kanji logic
+                    displayChar = (unit.type === 'kana') ? unit.text[pIdx] : (unit.reading && unit.reading[pIdx] ? unit.reading[pIdx] : "•");
+                }
+
+                const engClass = (unit.type === 'english') ? 'eng-label' : '';
+                const hasMeta = isAccented || style.shakuri || style.edge || (style.dynamic && style.dynamic !== 'n');
+
+                let marker = "";
+                if (style.edge) marker += "✨";
+                if (style.shakuri) marker += "⤴";
+
+                // Render Column: Syllable -> Settings -> Input
+                inner += `<div class="syllable-col">
+                        <div class="char-display ${isAccented ? 'accented' : ''} ${engClass}">
+                            ${displayChar}
+                            <div class="marker-icon">${marker}</div>
+                        </div>
+                        <button class="settings-btn ${hasMeta ? 'active-meta' : ''}" 
+                            onclick="openModal(${lIdx}, ${uIdx}, ${pIdx}, this)" 
+                            title="詳細設定">⚙</button>
+                        <input class="pitch-input" 
+                            value="${p}" 
+                            onkeydown="handlePitchKey(event, ${lIdx}, ${uIdx}, ${pIdx})"
+                            onchange="updatePitch(${lIdx}, ${uIdx}, ${pIdx}, this.value)"
+                            onfocus="this.select()">
+                      </div>`;
+            });
+
+            return inner;
+        }
+
+        function render() {
+            if (!currentId || !songs[currentId]) return;
+            const song = songs[currentId];
+
+            // --- UPDATED: Use Shared Logic for Migration/Healing ---
+            const line = song.lines[activeLineIdx];
+            if (line && line.units) {
+                // Check current line for fixes using shared logic
+                // Note: migrateLineUnits returns true if changed
+                if (Logic.migrateLineUnits(line.units)) {
+                    setDirty(true);
+                }
+            }
+
+            document.getElementById('title-display').innerText = song.title;
+            document.getElementById('lyric-in').value = song.lyrics;
+
+            // Show/Hide Inline Lyric Editor
+            const inlineEditor = document.getElementById('lyric-editor-card');
+            if (song.lines && song.lines.length > 0) {
+                inlineEditor.style.display = 'none';
+            } else {
+                inlineEditor.style.display = 'block';
+            }
+
+            const totalLines = song.lines.length;
+            if (totalLines > 0) {
+                // Sync nav jump input
+                const navJump = document.getElementById('nav-line-jump');
+                if (navJump) {
+                    navJump.max = totalLines;
+                    navJump.value = activeLineIdx + 1;
+                }
+            } else {
+                const navJump = document.getElementById('nav-line-jump');
+                if (navJump) navJump.value = "";
+            }
+
+            const container = document.getElementById('lyrics-container');
+            container.innerHTML = '';
+
+            if (totalLines > 0) {
+                const line = song.lines[activeLineIdx];
+                const header = document.createElement('h3');
+                header.innerText = "編集中の行";
+                container.appendChild(header);
+
+                const flow = document.createElement('div');
+                flow.className = 'syllable-flow';
+
+                line.units.forEach((unit, uIdx) => {
+                    const uWrapper = document.createElement('div');
+                    uWrapper.className = 'unit-wrapper';
+
+                    const uDiv = document.createElement('div');
+                    const groupClass = unit.wordIndex % 2 === 0 ? 'word-group-even' : 'word-group-odd';
+                    uDiv.className = `unit ${unit.type} ${groupClass}`;
+
+                    if (unit.type === 'space') {
+                        uDiv.innerHTML = `<div style="height:40px;"></div>`;
+                    } else {
+                        let inner = `<div class="original-text-row">${unit.type === 'kana' ? '&nbsp;' : unit.text}</div>`;
+
+                        if (unit.type === 'kanji' || unit.type === 'english') {
+                            inner += `<input id="reading-${activeLineIdx}-${uIdx}" class="reading-input" placeholder="読み" value="${unit.reading || ''}" oninput="updateReading(${activeLineIdx}, ${uIdx}, this.value)">`;
+                        }
+
+                        inner += `<div id="unit-bottom-${activeLineIdx}-${uIdx}" class="unit-dynamic-content">`;
+                        inner += renderUnitBottom(unit, activeLineIdx, uIdx);
+                        inner += `</div>`;
+
+                        uDiv.innerHTML = inner;
+                    }
+                    uWrapper.appendChild(uDiv);
+
+                    // Add Split Button between units (but not after the last unit)
+                    if (uIdx < line.units.length - 1) {
+                        const splitBtn = document.createElement('button');
+                        splitBtn.className = 'split-btn';
+                        splitBtn.innerHTML = '✂️';
+                        splitBtn.title = 'ここで改行';
+                        splitBtn.onclick = () => splitLine(activeLineIdx, uIdx);
+                        uWrapper.appendChild(splitBtn);
+                    }
+
+                    flow.appendChild(uWrapper);
+                });
+                container.appendChild(flow);
+            }
+            updateChart();
+            updateLyricsNav();
+        }
+
+        // --- Data Updates ---
+
+        function updateReading(lIdx, uIdx, val) {
+            const u = songs[currentId].lines[lIdx].units[uIdx];
+            u.reading = val;
+            setDirty(true);
+
+            // --- UPDATED: Use Shared Logic for Pitch Count ---
+            let len = Logic.calculatePitchCount(u, val);
+
+            while (u.pitches.length < len) {
+                const lastP = u.pitches.length > 0 ? u.pitches[u.pitches.length - 1] : "c4";
+                u.pitches.push(lastP);
+                if (!u.accents) u.accents = [];
+                u.accents.push(false);
+                if (!u.styles) u.styles = [];
+                u.styles.push({});
+            }
+
+            if (u.pitches.length > len) {
+                u.pitches = u.pitches.slice(0, len);
+                if (u.accents) u.accents = u.accents.slice(0, len);
+                if (u.styles) u.styles = u.styles.slice(0, len);
+            }
+
+            const wrapper = document.getElementById(`unit-bottom-${lIdx}-${uIdx}`);
+            if (wrapper) {
+                wrapper.innerHTML = renderUnitBottom(u, lIdx, uIdx);
+            }
+
+            updateChart();
+        }
+
+        function updatePitch(l, u, p, val) {
+            val = val.toLowerCase();
+            if (!Logic.isValidPitch(val)) return;
+            songs[currentId].lines[l].units[u].pitches[p] = val;
+            playNoteName(val);
+            setDirty(true);
+            updateChart();
+        }
+
+        function handlePitchKey(e, l, u, p) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const currentVal = e.target.value.toLowerCase();
+                const newVal = Logic.getNextPitch(currentVal, e.key === 'ArrowUp' ? 1 : -1);
+
+                if (newVal !== currentVal) {
+                    e.target.value = newVal;
+                    songs[currentId].lines[l].units[u].pitches[p] = newVal;
+                    playNoteName(newVal, 0.1);
+                    setDirty(true);
+                    updateChart();
+                }
+            }
+        }
+
+        function transposeLine(semitones) {
+            const line = songs[currentId].lines[activeLineIdx];
+            if (!line) return;
+
+            if (Logic.transposeUnits(line.units, semitones)) {
+                playNoteName(songs[currentId].lines[activeLineIdx].units[0].pitches[0], 0.1);
+                setDirty(true);
+                render();
+            }
+        }
+
+        // --- Chart ---
+
+        function updateChart() {
+            const ctx = document.getElementById('pitchChart');
+            const song = songs[currentId];
+            if (!song || !song.lines || song.lines.length === 0) {
+                if (chart) {
+                    chart.destroy();
+                    chart = null;
+                }
+                return;
+            }
+
+            const line = song.lines[activeLineIdx];
+            const flatData = [], labels = [], pointColors = [], pointSizes = [], pointStyles = [], tickColors = [], pointBorders = [], pointBorderColors = [];
+            currentDataMeta = [];
+            let minP = Infinity, maxP = -Infinity;
+
+            line.units.forEach((u, uIdx) => {
+                const isEven = u.wordIndex % 2 === 0;
+                const groupColor = isEven ? '#3498db' : '#2980b9';
+                const accentColor = '#e67e22';
+
+                if (u.type === 'space') {
+                    labels.push(["", ""]);
+                    flatData.push(null);
+                    pointColors.push("transparent");
+                    pointSizes.push(0);
+                    pointStyles.push('circle');
+                    tickColors.push("transparent");
+                    pointBorders.push(0);
+                    currentDataMeta.push(null);
+                } else {
+                    u.pitches.forEach((p, pIdx) => {
+                        // Label Logic for Graph
+                        let kana;
+                        if (u.type === 'english') {
+                            if (u.pitches.length === 1) {
+                                kana = u.reading || u.text;
+                            } else {
+                                // Japanese Rule for Multiple Notes
+                                if (u.reading && u.reading.length > 0) {
+                                    kana = u.reading[pIdx] || "";
+                                } else {
+                                    // No reading fallback
+                                    kana = (pIdx === 0) ? u.text : "";
+                                }
+                            }
+                        } else {
+                            kana = (u.type === 'kana') ? u.text[pIdx] : (u.reading && u.reading[pIdx] ? u.reading[pIdx] : "•");
+                        }
+                        const original = (pIdx === 0 && u.type !== 'kana') ? u.text : "";
+
+                        const isAccented = u.accents && u.accents[pIdx];
+                        const style = (u.styles && u.styles[pIdx]) || {};
+
+                        labels.push([kana, original]);
+
+                        const color = isAccented ? accentColor : groupColor;
+                        pointColors.push(color);
+
+                        // --- UPDATED: Use Shared Logic for Radius ---
+                        let radius = Logic.getPointRadius(style);
+                        pointSizes.push(radius);
+
+                        pointStyles.push(style.edge ? 'star' : 'circle');
+
+                        // Border logic
+                        pointBorders.push(style.edge ? 2 : 1);
+                        pointBorderColors.push(style.edge ? (isAccented ? accentColor : groupColor) : 'white');
+
+                        tickColors.push(isAccented ? accentColor : '#666');
+
+                        currentDataMeta.push({ uIdx, pIdx, shakuri: style.shakuri });
+                        const val = Logic.midiFromPitch(p);
+                        flatData.push(val || null);
+
+                        if (val) { minP = Math.min(minP, val); maxP = Math.max(maxP, val); }
+                    });
+                }
+            });
+
+            // Range Padding
+            if (minP === Infinity) { minP = 55; maxP = 72; }
+            else { minP -= 2; maxP += 2; }
+
+            if (chart) {
+                // Update existing chart
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = flatData;
+                chart.data.datasets[0].pointBackgroundColor = pointColors;
+                chart.data.datasets[0].pointBorderWidth = pointBorders;
+                chart.data.datasets[0].pointBorderColor = pointBorderColors;
+                chart.data.datasets[0].pointRadius = pointSizes;
+                chart.data.datasets[0].pointStyle = pointStyles;
+                chart.data.datasets[0].cubicInterpolationMode = 'monotone';
+                chart.data.datasets[0].tension = 0.4;
+                chart.options.scales.x.ticks.color = tickColors;
+                chart.options.scales.y.min = minP;
+                chart.options.scales.y.max = maxP;
+                chart.update();
+            } else {
+                // Create new chart
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Pitch',
+                            data: flatData,
+                            borderColor: '#95a5a6',
+                            borderWidth: 2,
+                            pointBackgroundColor: pointColors,
+                            pointBorderColor: pointBorderColors,
+                            pointBorderWidth: pointBorders,
+                            pointRadius: pointSizes,
+                            pointStyle: pointStyles,
+                            pointHoverRadius: 10,
+                            spanGaps: false,
+                            fill: false,
+                            tension: 0.4,
+                            cubicInterpolationMode: 'monotone',
+                            segment: {
+                                borderColor: (ctx) => {
+                                    const meta = currentDataMeta[ctx.p1DataIndex];
+                                    if (meta && meta.shakuri) return '#e67e22'; // Highlight color
+                                    return '#95a5a6';
+                                }
+                            }
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'nearest', axis: 'y' },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => Logic.pitchFromMidi(ctx.raw) || ctx.raw
+                                }
+                            },
+                            dragData: {
+                                round: 0,
+                                showTooltip: true,
+                                onDrag: function (e, datasetIndex, index, value) {
+                                    e.target.style.cursor = 'grabbing';
+                                },
+                                onDragEnd: (e, datasetIndex, index, value) => {
+                                    e.target.style.cursor = 'default';
+                                    const meta = currentDataMeta[index];
+                                    const noteName = Logic.pitchFromMidi(value);
+                                    if (meta && noteName) {
+                                        songs[currentId].lines[activeLineIdx].units[meta.uIdx].pitches[meta.pIdx] = noteName;
+                                        playNoteName(noteName);
+                                        const input = document.querySelectorAll(`#unit-bottom-${activeLineIdx}-${meta.uIdx} .pitch-input`)[meta.pIdx];
+                                        if (input) input.value = noteName;
+                                        setDirty(true);
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    autoSkip: false,
+                                    font: { size: 11 },
+                                    color: tickColors
+                                },
+                                grid: { display: false }
+                            },
+                            y: {
+                                min: minP, max: maxP,
+                                grid: {
+                                    color: (c) => {
+                                        const val = c.tick.value;
+                                        const note = Logic.pitchFromMidi(val);
+                                        if (!note) return 'transparent';
+                                        if (note.startsWith('c') && !note.includes('#')) return 'rgba(0,0,0,0.2)';
+                                        return 'rgba(0,0,0,0.05)';
+                                    }
+                                },
+                                ticks: {
+                                    stepSize: 1,
+                                    callback: v => {
+                                        const n = Logic.pitchFromMidi(v);
+                                        if (!n) return null;
+                                        return (!n.includes('#')) ? n : null;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // --- Persistence & File I/O ---
+
+        function saveCurrent(notify) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+            setDirty(false);
+            if (notify) {
+                const btn = document.querySelector('.btn-success');
+                const orig = btn.innerText;
+                btn.innerText = "保存完了!";
+                setTimeout(() => btn.innerText = orig, 1500);
+            }
+        }
+
+        function updateSidebar() {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            const sortedIds = Object.keys(songs).sort((a, b) => b.localeCompare(a));
+
+            sortedIds.forEach(id => {
+                const song = songs[id];
+                const div = document.createElement('div');
+                div.className = 'song-item' + (currentId === id ? ' active' : '');
+
+                div.innerHTML = `
+                <button class="song-btn" onclick="loadSong('${id}')">${song.title}</button>
+                <button class="del-btn" onclick="deleteSong(event, '${id}')" title="削除">×</button>
+            `;
+                list.append(div);
+            });
+        }
+
+        function updateLyricsNav() {
+            const list = document.getElementById('lyrics-nav-list');
+            if (!list) return;
+            list.innerHTML = '';
+            const song = songs[currentId];
+            if (!song || !song.lines) return;
+
+            song.lines.forEach((line, idx) => {
+                const item = document.createElement('div');
+                item.className = 'nav-line-item' + (idx === activeLineIdx ? ' active' : '');
+                item.onclick = () => jumpToLine(idx);
+
+                const lineNum = idx + 1;
+                item.innerHTML = `<span class="nav-line-num">${lineNum.toString().padStart(2, '0')}</span>${line.raw || '---'}`;
+                list.appendChild(item);
+
+                // Keep active item in view
+                if (idx === activeLineIdx) {
+                    setTimeout(() => {
+                        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }, 50);
+                }
+            });
+
+            // Update jump input
+            const navJump = document.getElementById('nav-line-jump');
+            if (navJump) {
+                navJump.value = activeLineIdx + 1;
+                navJump.max = song.lines.length;
+            }
+        }
+
+        function deleteSong(e, id) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            showConfirm("曲の削除", "本当にこの曲を削除しますか？", () => {
+                delete songs[id];
+                saveCurrent();
+                if (currentId === id) {
+                    location.reload();
+                } else {
+                    updateSidebar();
+                }
+            }, "削除する");
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(songs, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `pitch_master_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+        }
+
+        function importData(e) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    songs = { ...songs, ...data };
+                    saveCurrent();
+                    updateSidebar();
+                    showAlert("通知", "読み込み完了しました");
+                } catch (err) {
+                    showAlert("エラー", "ファイルの読み込みに失敗しました。JSON形式を確認してください。");
+                }
+            };
+            reader.readAsText(e.target.files[0]);
+        }
+
+        // --- Cloud Sync Logic ---
+        const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID';
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            await gapi.client.init({
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            gapiInited = true;
+        }
+
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: '', // defined at request time
+            });
+            gisInited = true;
+        }
+
+        function handleAuthClick() {
+            if (!gisInited || !gapiInited) {
+                showAlert("通知", "Google APIの読み込み中です。しばらくお待ちください。");
+                return;
+            }
+            if (CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID') {
+                showAlert("設定が必要", "Google Client IDが設定されていません。logic.js付近の定数を確認してください。");
+                return;
+            }
+
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) {
+                    throw (resp);
+                }
+                updateCloudUI(true);
+            };
+
+            if (gapi.client.getToken() === null) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                tokenClient.requestAccessToken({ prompt: '' });
+            }
+        }
+
+        function handleSignoutClick() {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                google.accounts.oauth2.revoke(token.access_token);
+                gapi.client.setToken('');
+                updateCloudUI(false);
+            }
+        }
+
+        function updateCloudUI(isSignedIn) {
+            const dot = document.querySelector('.cloud-dot');
+            const statusText = document.getElementById('cloud-status-text');
+            const loginBtn = document.getElementById('cloud-login-btn-container');
+            const syncActions = document.getElementById('cloud-sync-actions');
+
+            if (isSignedIn) {
+                dot.classList.add('connected');
+                statusText.innerText = "接続済み";
+                loginBtn.style.display = 'none';
+                syncActions.style.display = 'grid';
+            } else {
+                dot.classList.remove('connected');
+                statusText.innerText = "オフライン";
+                loginBtn.style.display = 'block';
+                syncActions.style.display = 'none';
+            }
+        }
+
+        async function backupToCloud() {
+            try {
+                const btn = document.getElementById('cloud-backup-btn');
+                btn.innerText = "⏳ 保存中...";
+                btn.disabled = true;
+
+                const response = await gapi.client.drive.files.list({
+                    q: "name = 'pitch_master_v2_backup.json' and trashed = false",
+                    fields: 'files(id, name)',
+                });
+
+                const files = response.result.files;
+                const content = JSON.stringify(songs, null, 2);
+
+                if (files.length > 0) {
+                    const fileId = files[0].id;
+                    await gapi.client.request({
+                        path: '/upload/drive/v3/files/' + fileId,
+                        method: 'PATCH',
+                        params: { uploadType: 'media' },
+                        body: content,
+                    });
+                } else {
+                    const metadata = {
+                        name: 'pitch_master_v2_backup.json',
+                        mimeType: 'application/json',
+                    };
+                    const boundary = 'foo_bar_baz';
+                    const delimiter = "\r\n--" + boundary + "\r\n";
+                    const close_delim = "\r\n--" + boundary + "--";
+
+                    const body = delimiter +
+                        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+                        JSON.stringify(metadata) +
+                        delimiter +
+                        'Content-Type: application/json\r\n\r\n' +
+                        content +
+                        close_delim;
+
+                    await gapi.client.request({
+                        path: '/upload/drive/v3/files',
+                        method: 'POST',
+                        params: { uploadType: 'multipart' },
+                        headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+                        body: body,
+                    });
+                }
+
+                btn.innerText = "✅ 完了!";
+                setTimeout(() => {
+                    btn.innerText = "☁️ バックアップ";
+                    btn.disabled = false;
+                }, 2000);
+            } catch (err) {
+                console.error(err);
+                showAlert("エラー", "バックアップに失敗しました。");
+                btn.innerText = "☁️ バックアップ";
+                btn.disabled = false;
+            }
+        }
+
+        async function restoreFromCloud() {
+            showConfirm("リストア", "クラウドからデータを読み込みます。現在のデータは統合されます。よろしいですか？", async () => {
+                try {
+                    const btn = document.getElementById('cloud-restore-btn');
+                    btn.innerText = "⏳ 読込中...";
+                    btn.disabled = true;
+
+                    const response = await gapi.client.drive.files.list({
+                        q: "name = 'pitch_master_v2_backup.json' and trashed = false",
+                        fields: 'files(id, name)',
+                    });
+
+                    const files = response.result.files;
+                    if (files.length === 0) {
+                        showAlert("通知", "バックアップが見つかりませんでした。");
+                        btn.innerText = "♻️ リストア";
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    const fileId = files[0].id;
+                    const fileResponse = await gapi.client.drive.files.get({
+                        fileId: fileId,
+                        alt: 'media',
+                    });
+
+                    const cloudData = fileResponse.result;
+                    songs = { ...songs, ...cloudData };
+                    saveCurrent();
+                    updateSidebar();
+                    render();
+
+                    btn.innerText = "✅ 完了!";
+                    setTimeout(() => {
+                        btn.innerText = "♻️ リストア";
+                        btn.disabled = false;
+                    }, 2000);
+                } catch (err) {
+                    console.error(err);
+                    showAlert("エラー", "リストアに失敗しました。");
+                    const btn = document.getElementById('cloud-restore-btn');
+                    btn.innerText = "♻️ リストア";
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // Auto-Migration Function for V2
+        function migrateData() {
+            let changed = false;
+            if (!songs) return;
+
+            Object.keys(songs).forEach(key => {
+                const song = songs[key];
+                if (!song.lines) return;
+
+                song.lines.forEach(line => {
+                    if (!line.units) return;
+                    // --- UPDATED: Use Shared Logic for Migration ---
+                    if (Logic.migrateLineUnits(line.units)) {
+                        changed = true;
+                    }
+                });
+            });
+
+            if (changed) {
+                console.log("Data migrated to V2 format");
+                saveCurrent(false);
+                // Force re-render if current song was affected
+                if (songs[currentId]) render();
+            }
+        }
+
+        // Resizer Logic
+        function initResizers() {
+            // Sidebar Resizer (Horizontal)
+            setupResizer('sidebar-resizer', 'sidebar', 'right', (val) => {
+                const newVal = Math.max(150, Math.min(val, 450));
+                document.documentElement.style.setProperty('--sidebar-width', newVal + 'px');
+            });
+
+            // Chart Box vs Nav Panel Resizer (Horizontal)
+            // Target is the nav panel on the right
+            setupResizer('chart-resizer', 'lyrics-nav-panel', 'left', (val) => {
+                const newVal = Math.max(180, Math.min(val, 500));
+                const panel = document.getElementById('lyrics-nav-panel');
+                panel.style.width = newVal + 'px';
+            });
+
+            // Header vs Content Resizer (Vertical)
+            setupResizer('header-resizer', '.pinned-header', 'bottom', (val) => {
+                const header = document.querySelector('.pinned-header');
+                const row = header.querySelector('.chart-nav-row');
+                // Adjust the chart row height specifically as it's the main variable part
+                const currentHeight = header.offsetHeight;
+                const delta = val - currentHeight;
+                const newRowHeight = Math.max(150, Math.min(row.offsetHeight + delta, 600));
+                row.style.height = newRowHeight + 'px';
+            });
+        }
+
+        function setupResizer(resizerId, targetId, side, onResize) {
+            const resizer = document.getElementById(resizerId);
+            if (!resizer) return;
+
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startY = e.clientY;
+                let target = document.getElementById(targetId) || document.querySelector(targetId);
+                const startWidth = target.offsetWidth;
+                const startHeight = target.offsetHeight;
+
+                resizer.classList.add('dragging');
+
+                const onMouseMove = (e) => {
+                    let newVal;
+                    if (side === 'right') {
+                        newVal = startWidth + (e.clientX - startX);
+                    } else if (side === 'left') {
+                        newVal = startWidth - (e.clientX - startX);
+                    } else if (side === 'bottom') {
+                        newVal = startHeight + (e.clientY - startY);
+                    } else if (side === 'top') {
+                        newVal = startHeight - (e.clientY - startY);
+                    }
+                    onResize(newVal);
+                };
+
+                const onMouseUp = () => {
+                    resizer.classList.remove('dragging');
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                };
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // Init
+        window.onload = () => {
+            migrateData(); // Run migration immediately
+            updateSidebar();
+            initResizers(); // Initialize resizers
+            if (Object.keys(songs).length > 0) loadSong(Object.keys(songs)[0]);
+
+            new ResizeObserver(() => {
+                if (chart) chart.resize();
+            }).observe(document.querySelector('.chart-box'));
+        };
+    </script>
+</body>
+
+</html>
