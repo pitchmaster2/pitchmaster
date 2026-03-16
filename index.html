@@ -1186,6 +1186,11 @@
                 btn.innerText = "保存完了!";
                 setTimeout(() => btn.innerText = orig, 1500);
             }
+
+            // Autobackup to Google Drive if logged in
+            if (typeof gapiInited !== 'undefined' && gapiInited && gapi.client && gapi.client.getToken() !== null) {
+                backupToCloud(true);
+            }
         }
 
         function updateSidebar() {
@@ -1358,14 +1363,44 @@
             }
         }
 
-        async function backupToCloud() {
+        async function getOrCreatePitchmasterFolder() {
+            const response = await gapi.client.drive.files.list({
+                q: "name = 'Pitchmaster' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                fields: 'files(id)',
+            });
+            const files = response.result.files;
+            if (files.length > 0) {
+                return files[0].id;
+            } else {
+                const createResp = await gapi.client.request({
+                    path: '/drive/v3/files',
+                    method: 'POST',
+                    body: {
+                        name: 'Pitchmaster',
+                        mimeType: 'application/vnd.google-apps.folder'
+                    }
+                });
+                return createResp.result.id;
+            }
+        }
+
+        async function backupToCloud(isAuto = false) {
+            const btn = document.getElementById('cloud-backup-btn');
+            const statusText = document.getElementById('cloud-status-text');
+
             try {
-                const btn = document.getElementById('cloud-backup-btn');
-                btn.innerText = "⏳ 保存中...";
-                btn.disabled = true;
+                if (!isAuto && btn) {
+                    btn.innerText = "⏳ 保存中...";
+                    btn.disabled = true;
+                }
+                if (isAuto && statusText) {
+                    statusText.innerText = "同期中...";
+                }
+
+                const folderId = await getOrCreatePitchmasterFolder();
 
                 const response = await gapi.client.drive.files.list({
-                    q: "name = 'pitch_master_v2_backup.json' and trashed = false",
+                    q: `name = 'pitch_master_v2_backup.json' and '${folderId}' in parents and trashed = false`,
                     fields: 'files(id, name)',
                 });
 
@@ -1384,6 +1419,7 @@
                     const metadata = {
                         name: 'pitch_master_v2_backup.json',
                         mimeType: 'application/json',
+                        parents: [folderId]
                     };
                     const boundary = 'foo_bar_baz';
                     const delimiter = "\r\n--" + boundary + "\r\n";
@@ -1406,16 +1442,37 @@
                     });
                 }
 
-                btn.innerText = "✅ 完了!";
-                setTimeout(() => {
-                    btn.innerText = "☁️ バックアップ";
-                    btn.disabled = false;
-                }, 2000);
+                if (!isAuto && btn) {
+                    btn.innerText = "✅ 完了!";
+                    setTimeout(() => {
+                        btn.innerText = "☁️ バックアップ";
+                        btn.disabled = false;
+                    }, 2000);
+                }
+                if (isAuto && statusText) {
+                    statusText.innerText = "同期完了";
+                    setTimeout(() => {
+                        if (statusText.innerText === "同期完了") {
+                            statusText.innerText = "接続済み";
+                        }
+                    }, 2000);
+                }
             } catch (err) {
                 console.error(err);
-                showAlert("エラー", "バックアップに失敗しました。");
-                btn.innerText = "☁️ バックアップ";
-                btn.disabled = false;
+                if (!isAuto) {
+                    showAlert("エラー", "バックアップに失敗しました。");
+                } else if (statusText) {
+                    statusText.innerText = "同期失敗";
+                    setTimeout(() => {
+                        if (statusText.innerText === "同期失敗") {
+                            statusText.innerText = "接続済み";
+                        }
+                    }, 2000);
+                }
+                if (!isAuto && btn) {
+                    btn.innerText = "☁️ バックアップ";
+                    btn.disabled = false;
+                }
             }
         }
 
@@ -1426,8 +1483,10 @@
                     btn.innerText = "⏳ 読込中...";
                     btn.disabled = true;
 
+                    const folderId = await getOrCreatePitchmasterFolder();
+
                     const response = await gapi.client.drive.files.list({
-                        q: "name = 'pitch_master_v2_backup.json' and trashed = false",
+                        q: `name = 'pitch_master_v2_backup.json' and '${folderId}' in parents and trashed = false`,
                         fields: 'files(id, name)',
                     });
 
