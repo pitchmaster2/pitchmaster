@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Core Operations Integration Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .summary {
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+        }
+
+        .summary.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .summary.failure {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .test-case {
+            margin-bottom: 10px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon {
+            font-weight: bold;
+            font-size: 1.2rem;
+            width: 24px;
+        }
+
+        .pass {
+            color: #28a745;
+        }
+
+        .fail {
+            color: #dc3545;
+        }
+
+        .desc {
+            flex-grow: 1;
+        }
+
+        .category {
+            font-size: 0.8rem;
+            background: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #666;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🛡️ Core Operations Integration Verifier</h1>
+    <div id="summary-area"></div>
+    <div id="results">Running tests...</div>
+
+    <!-- Load Local App for Manipulation -->
+    <iframe id="app-frame" src="../index.html"
+        style="width: 1px; height: 1px; border: none; position: absolute; left: -100px;"></iframe>
+
+    <script>
+        const results = document.getElementById('results');
+        const summaryArea = document.getElementById('summary-area');
+        let passes = 0;
+        let fails = 0;
+
+        function runTest(category, desc, condition) {
+            const div = document.createElement('div');
+            div.className = 'test-case';
+            if (condition) {
+                div.innerHTML = `<span class="icon pass">✔</span> <span class="category">${category}</span> <span class="desc">${desc}</span>`;
+                passes++;
+            } else {
+                div.innerHTML = `<span class="icon fail">✘</span> <span class="category">${category}</span> <span class="desc" style="color:#d63031">${desc}</span>`;
+                fails++;
+            }
+            results.appendChild(div);
+        }
+
+        async function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        const iframe = document.getElementById('app-frame');
+        iframe.onload = async () => {
+            const win = iframe.contentWindow;
+            results.innerHTML = "Initializing state...";
+
+            try {
+                // Mock GAPI Environment - SIGNED OUT to skip autobackups
+                win.gapi = {
+                    client: {
+                        init: async () => { },
+                        getToken: () => null 
+                    }
+                };
+
+                // Trigger actual initialization if needed
+                if (win.initializeGapiClient) {
+                    await win.initializeGapiClient();
+                }
+
+                results.innerHTML = "";
+
+                // --- RESET FOR CORE OPS ---
+                win.showPrompt = (title, msg, onOk) => onOk("Test Song");
+                win.showConfirm = (title, msg, onOk) => { onOk(); }; // Auto OK
+                win.backupToCloud = async () => {}; // Extra safety
+                
+                win.createNew(); // Starts song
+
+                const txt = win.document.getElementById('lyric-in');
+                txt.value = "Hello World";
+                
+                // processLyrics triggers Confirm. Mock approved.
+                win.processLyrics(); 
+
+                // Use win.eval to access variables declared with let/const in index.html
+                const evalVal = (expr) => win.eval(expr);
+
+                // --- TEST 1: LYRICS_PROCESSING ---
+                runTest("LYRICS", "Processed lyrics has 1 line", evalVal("songs[currentId].lines.length") === 1);
+                runTest("LYRICS", "Line split into 3 units (Hello, space, World)", evalVal("songs[currentId].lines[0].units.length") === 3); 
+
+                // --- TEST 2: LINE_OPERATIONS - Split ---
+                // Split after index 0 ("Hello")
+                win.splitLine(0, 0); 
+                
+                runTest("LINE_OPS", "Split creates second line", evalVal("songs[currentId].lines.length") === 2);
+                runTest("LINE_OPS", "First line has 1 unit ('Hello')", evalVal("songs[currentId].lines[0].units.length") === 1);
+                runTest("LINE_OPS", "Second line has 2 units (space, World)", evalVal("songs[currentId].lines[1].units.length") === 2);
+
+                // --- TEST 3: LINE_OPERATIONS - Join ---
+                win.activeLineIdx = 0;
+                win.joinWithNextLine();
+
+                runTest("LINE_OPS", "Join collapses to 1 line", evalVal("songs[currentId].lines.length") === 1);
+                runTest("LINE_OPS", "Joined line restores unit count", evalVal("songs[currentId].lines[0].units.length") === 3);
+
+                // --- TEST 4: DATA_UPDATES - Update Reading ---
+                // Add a unit manually for deterministic testing
+                evalVal(`songs[currentId].lines[0].units.push({
+                     text: "猫",
+                     type: "kanji",
+                     reading: "ねこ",
+                     pitches: ["c4", "d4"]
+                })`);
+                
+                const tarUIdx = evalVal("songs[currentId].lines[0].units.length - 1"); 
+                win.updateReading(0, tarUIdx, "ねこさん"); 
+                
+                runTest("DATA_UPDATES", "Reading updated", evalVal(`songs[currentId].lines[0].units[${tarUIdx}].reading`) === "ねこさん");
+                runTest("DATA_UPDATES", "Pitches expand on reading change", evalVal(`songs[currentId].lines[0].units[${tarUIdx}].pitches.length`) === 4);
+
+                // --- TEST 5: DATA_UPDATES - Update Pitch ---
+                win.updatePitch(0, tarUIdx, 0, "e4");
+                runTest("DATA_UPDATES", "Pitch updated", evalVal(`songs[currentId].lines[0].units[${tarUIdx}].pitches[0]`) === "e4");
+
+                // Summary Render
+                if (fails === 0) {
+                    summaryArea.className = "summary success";
+                    summaryArea.innerText = `All ${passes} tests PASSED. Core operations are fully functional.`;
+                } else {
+                    summaryArea.className = "summary failure";
+                    summaryArea.innerText = `${fails} tests FAILED. Check index.html logic.`;
+                }
+
+            } catch (err) {
+                console.error(err);
+                summaryArea.className = "summary failure";
+                summaryArea.innerText = "Error executing integration tests: " + err.message;
+            }
+        };
+    </script>
+</body>
+
+</html>
