@@ -30,9 +30,13 @@
                 <label class="modal-label" style="font-size: 0.85rem; color: #666;">Reading (読み):</label>
                 <input type="text" id="modal-reading" class="reading-input" style="width: 100px; margin-bottom: 0;">
             </div>
-            <div class="modal-row" id="modal-pitch-row" style="margin-bottom: 12px;">
+            <div class="modal-row" id="modal-pitch-row" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
                 <label class="modal-label" style="font-size: 0.85rem; color: #666;">Pitch (音程):</label>
-                <input type="text" id="modal-pitch" class="pitch-input" style="width: 60px;">
+                <input type="text" id="modal-pitch" class="pitch-input" style="width: 40px;" placeholder="C4" 
+                    oninput="this.value = this.value.toUpperCase().replace(/[^A-G0-9]/g, '').slice(0, 2);">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer;">
+                    <input type="checkbox" id="modal-pitch-sharp" style="cursor: pointer;"> #
+                </label>
             </div>
             
             <h4 style="font-size: 0.85rem; color: #7f8c8d; margin-top: 10px; margin-bottom: 8px;">Details</h4>
@@ -635,19 +639,36 @@
 
             // Update Pitch
             const pitchInput = document.getElementById('modal-pitch');
-            pitchInput.value = unit.pitches[pIdx] || '';
-            pitchInput.onchange = (e) => {
-                updatePitch(lIdx, uIdx, pIdx, e.target.value);
-            };
+            const sharpCheck = document.getElementById('modal-pitch-sharp');
+            const fullPitch = unit.pitches[pIdx] || '';
             
+            pitchInput.value = fullPitch.replace('#', '').toUpperCase();
+            sharpCheck.checked = fullPitch.includes('#');
+
+            const syncPitch = () => {
+                const base = pitchInput.value;
+                if (!base || base.length < 2) return;
+                const full = base[0] + (sharpCheck.checked ? '#' : '') + base[1];
+                updatePitch(lIdx, uIdx, pIdx, full);
+            };
+
+            pitchInput.onchange = syncPitch;
+            sharpCheck.onchange = syncPitch;
+            
+            pitchInput.oninput = function() {
+                this.value = this.value.toUpperCase().replace(/[^A-G0-9]/g, '').slice(0, 2);
+                syncPitch();
+            };
+
             // Allow arrow keys inside modal pitch input
             pitchInput.onkeydown = (e) => {
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
-                    const currentVal = e.target.value.toLowerCase();
+                    const currentVal = (pitchInput.value + (sharpCheck.checked ? '#' : '')).toLowerCase();
                     const newVal = Logic.getNextPitch(currentVal, e.key === 'ArrowUp' ? 1 : -1);
                     if (newVal !== currentVal) {
-                        e.target.value = newVal;
+                        pitchInput.value = newVal.replace('#', '').toUpperCase();
+                        sharpCheck.checked = newVal.includes('#');
                         updatePitch(lIdx, uIdx, pIdx, newVal);
                     }
                 }
@@ -887,11 +908,17 @@
                         <button class="settings-btn ${hasMeta ? 'active-meta' : ''}" 
                             onclick="openModal(${lIdx}, ${uIdx}, ${pIdx}, this)" 
                             title="詳細設定">⚙</button>
-                        <input class="pitch-input" 
-                            value="${p}" 
-                            onkeydown="handlePitchKey(event, ${lIdx}, ${uIdx}, ${pIdx})"
-                            onchange="updatePitch(${lIdx}, ${uIdx}, ${pIdx}, this.value)"
-                            onfocus="this.select()">
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <input class="pitch-input" style="width: 28px;" 
+                                value="${p.replace('#', '').toUpperCase()}" 
+                                oninput="this.value = this.value.toUpperCase().replace(/[^A-G0-9]/g, '').slice(0, 2); updatePitchGrid(${lIdx}, ${uIdx}, ${pIdx}, this)"
+                                onkeydown="handlePitchKey(event, ${lIdx}, ${uIdx}, ${pIdx})"
+                                onchange="updatePitchGrid(${lIdx}, ${uIdx}, ${pIdx}, this)"
+                                onfocus="this.select()">
+                            <input type="checkbox" class="sharp-checkbox" style="cursor: pointer;" title="Sharp (#)"
+                                ${p.includes('#') ? 'checked' : ''}
+                                onchange="updatePitchGrid(${lIdx}, ${uIdx}, ${pIdx}, this)">
+                        </div>
                       </div>`;
             });
 
@@ -974,14 +1001,30 @@
             updateChart();
         }
 
+        function updatePitchGrid(l, u, p, elem) {
+            const div = elem.closest('div');
+            const inp = div.querySelector('.pitch-input');
+            const chk = div.querySelector('.sharp-checkbox');
+            const base = inp.value;
+            if (base.length < 2) return;
+            const val = base[0] + (chk.checked ? '#' : '') + base[1];
+            updatePitch(l, u, p, val);
+        }
+
         function handlePitchKey(e, l, u, p) {
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                const currentVal = e.target.value.toLowerCase();
+                const div = e.target.closest('div');
+                const chk = div.querySelector('.sharp-checkbox');
+                const base = e.target.value;
+                if (base.length < 2) return;
+                
+                const currentVal = (base[0] + (chk.checked ? '#' : '') + base[1]).toLowerCase();
                 const newVal = Logic.getNextPitch(currentVal, e.key === 'ArrowUp' ? 1 : -1);
 
                 if (newVal !== currentVal) {
-                    e.target.value = newVal;
+                    e.target.value = newVal.replace('#', '').toUpperCase();
+                    chk.checked = newVal.includes('#');
                     songs[currentId].lines[l].units[u].pitches[p] = newVal;
                     playNoteName(newVal, 0.1);
                     setDirty(true);

@@ -214,6 +214,41 @@
                 runTest("UX", "Modal stays within bottom viewport boundary", (modalTop + modalHeight) <= (vHeight + win.scrollY + 5));
                 win.closeModal();
 
+                // --- TEST 8: PITCH_INPUT_VALIDATION ---
+                win.openModal(0, 0, 0); 
+                const pitchIn = win.document.getElementById('modal-pitch');
+                const sharpIn = win.document.getElementById('modal-pitch-sharp');
+
+                // 8a: Input Scrubbing
+                pitchIn.value = "F#4";
+                pitchIn.dispatchEvent(new Event('input'));
+                runTest("PITCH_VALIDATION", "Modal Input scrubs sharp (F#4 -> F4)", pitchIn.value === "F4");
+
+                pitchIn.value = "G FLAT 4";
+                pitchIn.dispatchEvent(new Event('input'));
+                runTest("PITCH_VALIDATION", "Modal Input filters complex invalid string (G FLAT 4 -> GF)", pitchIn.value === "GF");
+
+                // 8b: Checkbox Sync
+                pitchIn.value = "C4";
+                pitchIn.dispatchEvent(new Event('input')); 
+                sharpIn.checked = true;
+                sharpIn.dispatchEvent(new Event('change')); 
+                
+                runTest("PITCH_VALIDATION", "Checkbox triggers Sharp update (C4 + # -> C#4)", evalVal("songs[currentId].lines[0].units[0].pitches[0]") === "c#4");
+
+                // 8c: Grid Input validation
+                const gridDiv = win.document.querySelector(`#unit-bottom-0-0 div`);
+                if (gridDiv) {
+                    const gridInp = gridDiv.querySelector('.pitch-input');
+                    const gridChk = gridDiv.querySelector('.sharp-checkbox');
+                    
+                    gridInp.value = "D#5";
+                    gridInp.dispatchEvent(new Event('input'));
+                    runTest("PITCH_VALIDATION", "Grid Input scrubs sharp (D#5 -> D5)", gridInp.value === "D5");
+                }
+
+                win.closeModal();
+
                 // Summary Render
                 if (fails === 0) {
                     summaryArea.className = "summary success";

@@ -11,6 +11,7 @@ Tests are pure client-side HTML files. To run them, satisfy the following:
 2.  **File List**:
     *   `tests/tests.html`: **Unit Tests** for shared business logic (Parsing, Pitch, Migrations).
     *   `tests/integration_tests.html`: **Integration Tests** (e.g. Autobackup, Mocked GAPI features).
+    *   `tests/core_integration_tests.html`: **Core DOM Integration Tests** (Modal updates, click handlers, layouts).
 
 ---
 
