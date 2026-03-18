@@ -23,7 +23,19 @@
 
         <!-- Settings Modal -->
         <div id="settings-modal">
-            <h4>Note Settings</h4>
+            <div id="modal-char-row" style="margin-bottom: 12px; font-weight: bold; font-size: 1.1rem; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+                <span id="modal-char-text">Character</span>
+            </div>
+            <div class="modal-row" id="modal-reading-row" style="display:none; margin-bottom: 8px;">
+                <label class="modal-label" style="font-size: 0.85rem; color: #666;">Reading (読み):</label>
+                <input type="text" id="modal-reading" class="reading-input" style="width: 100px; margin-bottom: 0;">
+            </div>
+            <div class="modal-row" id="modal-pitch-row" style="margin-bottom: 12px;">
+                <label class="modal-label" style="font-size: 0.85rem; color: #666;">Pitch (音程):</label>
+                <input type="text" id="modal-pitch" class="pitch-input" style="width: 60px;">
+            </div>
+            
+            <h4 style="font-size: 0.85rem; color: #7f8c8d; margin-top: 10px; margin-bottom: 8px;">Details</h4>
             <div class="modal-row">
                 <label class="modal-label">
                     <input type="checkbox" id="modal-accent" onchange="applyModalSettings()"> Accent (核)
@@ -54,7 +66,13 @@
                     <option value="ff">ff (Very Loud)</option>
                 </select>
             </div>
-            <div style="margin-top:10px; text-align:right;">
+            
+            <div style="border-top: 1px solid #eee; margin-top:12px; padding-top:10px;">
+                <button id="modal-cut-before" class="btn btn-outline" style="width:100%; margin-bottom: 5px; font-size: 0.8rem; padding: 4px;" onclick="applyModalSplit('before')">✂️ 前で分割 (Cut Before)</button>
+                <button id="modal-cut-after" class="btn btn-outline" style="width:100%; font-size: 0.8rem; padding: 4px;" onclick="applyModalSplit('after')">✂️ 後で分割 (Cut After)</button>
+            </div>
+
+            <div style="margin-top:12px; text-align:right;">
                 <button class="btn btn-outline" style="padding:4px 10px; font-size:0.8rem;"
                     onclick="closeModal()">Close</button>
             </div>
@@ -210,25 +228,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="resizer-v" id="header-resizer"></div>
 
-                <div id="content-scroll">
-                    <div id="lyrics-container" class="card">
-                        <!-- Syllables render here -->
-                    </div>
-
-                    <div id="lyric-editor-card" class="card">
-                        <div
-                            style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
-                            <h3 style="border:none; margin:0; padding:0;">原文 / 歌詞編集</h3>
-                            <button onclick="processLyrics()" class="btn btn-primary"
-                                style="font-size:0.8rem;">歌詞を反映してリセット</button>
-                        </div>
-                        <p style="font-size:0.8rem; color:#666; margin-top:0;">※
-                            漢字、英語、ひらがなを自動判別します。ここを変更して反映ボタンを押すと、現在のピッチデータはリセットされます。</p>
-                        <textarea id="lyric-in" placeholder="ここに歌詞を入力..."></textarea>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -391,6 +391,7 @@
                     updateSidebar();
                     loadSong(id, true); // Added force flag to skip dirty check
                     if (window.innerWidth <= 768) toggleSidebar();
+                    openLyricsModal();
                 });
             };
 
@@ -501,8 +502,10 @@
 
         function applyLyricsModal() {
             const newText = document.getElementById('modal-lyric-in').value;
-            showConfirm("確認", "歌詞を反映すると、現在のピッチデータはリセットされます。よろしいですか？", () => {
-                // This logic is now inside the confirm callback
+            const song = songs[currentId];
+            const isEmpty = !song || !song.lines || song.lines.length === 0;
+
+            const proceed = () => {
                 const fullText = newText;
                 const newLines = fullText.split('\n').filter(l => l.trim() !== "").map(lineStr => {
                     const units = Logic.parseLine(lineStr);
@@ -515,7 +518,13 @@
                 setDirty(true);
                 render();
                 closeLyricsModal();
-            });
+            };
+
+            if (isEmpty) {
+                proceed();
+            } else {
+                showConfirm("確認", "歌詞を反映すると、現在のピッチデータはリセットされます。よろしいですか？", proceed);
+            }
         }
 
         function reindexUnits(units) {
@@ -586,7 +595,7 @@
 
         // --- Modal Logic ---
 
-        function openModal(lIdx, uIdx, pIdx, btnElem) {
+        function openModal(lIdx, uIdx, pIdx, btnElem, coords) {
             const unit = songs[currentId].lines[lIdx].units[uIdx];
             const isAccent = unit.accents && unit.accents[pIdx];
 
@@ -598,22 +607,95 @@
 
             editingTarget = { l: lIdx, u: uIdx, p: pIdx };
 
+            // Update Split Buttons
+            const btnBefore = document.getElementById('modal-cut-before');
+            const btnAfter = document.getElementById('modal-cut-after');
+            const line = songs[currentId].lines[lIdx];
+
+            if (btnBefore && btnAfter) {
+                btnBefore.disabled = (uIdx === 0);
+                btnAfter.disabled = (uIdx === line.units.length - 1);
+            }
+
+            // Update Header
+            document.getElementById('modal-char-text').innerText = unit.text;
+
+            // Update Reading
+            const readingRow = document.getElementById('modal-reading-row');
+            const readingInput = document.getElementById('modal-reading');
+            if (unit.type === 'kanji' || unit.type === 'english') {
+                readingRow.style.display = 'flex';
+                readingInput.value = unit.reading || '';
+                readingInput.oninput = (e) => {
+                    updateReading(lIdx, uIdx, e.target.value);
+                };
+            } else {
+                readingRow.style.display = 'none';
+            }
+
+            // Update Pitch
+            const pitchInput = document.getElementById('modal-pitch');
+            pitchInput.value = unit.pitches[pIdx] || '';
+            pitchInput.onchange = (e) => {
+                updatePitch(lIdx, uIdx, pIdx, e.target.value);
+            };
+            
+            // Allow arrow keys inside modal pitch input
+            pitchInput.onkeydown = (e) => {
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const currentVal = e.target.value.toLowerCase();
+                    const newVal = Logic.getNextPitch(currentVal, e.key === 'ArrowUp' ? 1 : -1);
+                    if (newVal !== currentVal) {
+                        e.target.value = newVal;
+                        updatePitch(lIdx, uIdx, pIdx, newVal);
+                    }
+                }
+            };
+
             document.getElementById('modal-accent').checked = isAccent;
             document.getElementById('modal-shakuri').checked = style.shakuri || false;
             document.getElementById('modal-edge').checked = style.edge || false;
             document.getElementById('modal-dynamic').value = style.dynamic || 'n';
 
             const modal = document.getElementById('settings-modal');
-            const rect = btnElem.getBoundingClientRect();
-
             modal.style.display = 'block';
-            modal.style.top = (rect.bottom + window.scrollY + 5) + 'px';
-            modal.style.left = Math.max(10, rect.left + window.scrollX - 80) + 'px';
+
+            const modalHeight = modal.offsetHeight;
+            const viewportHeight = window.innerHeight;
+
+            if (coords) {
+                let top = coords.y + window.scrollY + 10;
+                if (coords.y + 10 + modalHeight > viewportHeight) {
+                    top = Math.max(5, coords.y + window.scrollY - modalHeight - 10);
+                }
+                modal.style.top = top + 'px';
+                modal.style.left = Math.max(10, coords.x + window.scrollX - 100) + 'px';
+            } else if (btnElem) {
+                const rect = btnElem.getBoundingClientRect();
+                let top = rect.bottom + window.scrollY + 5;
+                if (rect.bottom + 5 + modalHeight > viewportHeight) {
+                    top = Math.max(5, rect.top + window.scrollY - modalHeight - 5);
+                }
+                modal.style.top = top + 'px';
+                modal.style.left = Math.max(10, rect.left + window.scrollX - 80) + 'px';
+            }
         }
 
         function closeModal() {
             document.getElementById('settings-modal').style.display = 'none';
             editingTarget = null;
+        }
+
+        function applyModalSplit(direction) {
+            if (!editingTarget) return;
+            const { l, u } = editingTarget;
+            if (direction === 'before') {
+                if (u > 0) splitLine(l, u - 1);
+            } else {
+                splitLine(l, u);
+            }
+            closeModal();
         }
 
         function showConfirm(title, msg, onOk, okLabel = "OK", cancelLabel = "キャンセル") {
@@ -786,7 +868,7 @@
                     }
                 } else {
                     // Standard Kana/Kanji logic
-                    displayChar = (unit.type === 'kana') ? unit.text[pIdx] : (unit.reading && unit.reading[pIdx] ? unit.reading[pIdx] : "•");
+                    displayChar = (unit.type === 'kana') ? (unit.text[pIdx] || "•") : (unit.reading && unit.reading[pIdx] ? unit.reading[pIdx] : "•");
                 }
 
                 const engClass = (unit.type === 'english') ? 'eng-label' : '';
@@ -831,15 +913,6 @@
             }
 
             document.getElementById('title-display').innerText = song.title;
-            document.getElementById('lyric-in').value = song.lyrics;
-
-            // Show/Hide Inline Lyric Editor
-            const inlineEditor = document.getElementById('lyric-editor-card');
-            if (song.lines && song.lines.length > 0) {
-                inlineEditor.style.display = 'none';
-            } else {
-                inlineEditor.style.display = 'block';
-            }
 
             const totalLines = song.lines.length;
             if (totalLines > 0) {
@@ -854,57 +927,7 @@
                 if (navJump) navJump.value = "";
             }
 
-            const container = document.getElementById('lyrics-container');
-            container.innerHTML = '';
 
-            if (totalLines > 0) {
-                const line = song.lines[activeLineIdx];
-                const header = document.createElement('h3');
-                header.innerText = "編集中の行";
-                container.appendChild(header);
-
-                const flow = document.createElement('div');
-                flow.className = 'syllable-flow';
-
-                line.units.forEach((unit, uIdx) => {
-                    const uWrapper = document.createElement('div');
-                    uWrapper.className = 'unit-wrapper';
-
-                    const uDiv = document.createElement('div');
-                    const groupClass = unit.wordIndex % 2 === 0 ? 'word-group-even' : 'word-group-odd';
-                    uDiv.className = `unit ${unit.type} ${groupClass}`;
-
-                    if (unit.type === 'space') {
-                        uDiv.innerHTML = `<div style="height:40px;"></div>`;
-                    } else {
-                        let inner = `<div class="original-text-row">${unit.type === 'kana' ? '&nbsp;' : unit.text}</div>`;
-
-                        if (unit.type === 'kanji' || unit.type === 'english') {
-                            inner += `<input id="reading-${activeLineIdx}-${uIdx}" class="reading-input" placeholder="読み" value="${unit.reading || ''}" oninput="updateReading(${activeLineIdx}, ${uIdx}, this.value)">`;
-                        }
-
-                        inner += `<div id="unit-bottom-${activeLineIdx}-${uIdx}" class="unit-dynamic-content">`;
-                        inner += renderUnitBottom(unit, activeLineIdx, uIdx);
-                        inner += `</div>`;
-
-                        uDiv.innerHTML = inner;
-                    }
-                    uWrapper.appendChild(uDiv);
-
-                    // Add Split Button between units (but not after the last unit)
-                    if (uIdx < line.units.length - 1) {
-                        const splitBtn = document.createElement('button');
-                        splitBtn.className = 'split-btn';
-                        splitBtn.innerHTML = '✂️';
-                        splitBtn.title = 'ここで改行';
-                        splitBtn.onclick = () => splitLine(activeLineIdx, uIdx);
-                        uWrapper.appendChild(splitBtn);
-                    }
-
-                    flow.appendChild(uWrapper);
-                });
-                container.appendChild(flow);
-            }
             updateChart();
             updateLyricsNav();
         }
@@ -920,7 +943,7 @@
             let len = Logic.calculatePitchCount(u, val);
 
             while (u.pitches.length < len) {
-                const lastP = u.pitches.length > 0 ? u.pitches[u.pitches.length - 1] : "c4";
+                const lastP = u.pitches.length > 0 ? u.pitches[u.pitches.length - 1] : "";
                 u.pitches.push(lastP);
                 if (!u.accents) u.accents = [];
                 u.accents.push(false);
@@ -1009,7 +1032,7 @@
                     pointStyles.push('circle');
                     tickColors.push("transparent");
                     pointBorders.push(0);
-                    currentDataMeta.push(null);
+                    currentDataMeta.push({ uIdx, pIdx: 0, type: 'space' });
                 } else {
                     u.pitches.forEach((p, pIdx) => {
                         // Label Logic for Graph
@@ -1027,7 +1050,7 @@
                                 }
                             }
                         } else {
-                            kana = (u.type === 'kana') ? u.text[pIdx] : (u.reading && u.reading[pIdx] ? u.reading[pIdx] : "•");
+                            kana = (u.type === 'kana') ? (u.text[pIdx] || "•") : (u.reading && u.reading[pIdx] ? u.reading[pIdx] : "•");
                         }
                         const original = (pIdx === 0 && u.type !== 'kana') ? u.text : "";
 
@@ -1113,6 +1136,21 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         interaction: { mode: 'nearest', axis: 'y' },
+                        onClick: (e, elements, chart) => {
+                            if (elements.length > 0) {
+                                const index = elements[0].index;
+                                const meta = currentDataMeta[index];
+                                if (meta) {
+                                    const rect = chart.canvas.getBoundingClientRect();
+                                    // Use elements[0].element.x/y for exact point coords relative to canvas
+                                    const coords = {
+                                        x: rect.left + elements[0].element.x,
+                                        y: rect.top + elements[0].element.y
+                                    };
+                                    openModal(activeLineIdx, meta.uIdx, meta.pIdx, null, coords);
+                                }
+                            }
+                        },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -1172,6 +1210,37 @@
                         }
                     }
                 });
+            }
+
+            // Double click to convert space to note
+            const canvas = document.getElementById('pitchChart');
+            if (canvas) {
+                canvas.ondblclick = (e) => {
+                    if (!chart) return;
+                    const rect = canvas.getBoundingClientRect();
+                    const xValue = chart.scales.x.getValueForPixel(e.clientX - rect.left);
+                    const yValue = chart.scales.y.getValueForPixel(e.clientY - rect.top);
+                    const index = Math.round(xValue);
+                    const meta = currentDataMeta[index];
+
+                    if (meta) {
+                        const noteName = Logic.pitchFromMidi(Math.round(yValue));
+                        if (!noteName) return;
+
+                        const unit = songs[currentId].lines[activeLineIdx].units[meta.uIdx];
+
+                        if (meta.type === 'space') {
+                            unit.type = 'kana';
+                            unit.text = '•'; // Placeholder
+                            unit.pitches[0] = noteName;
+                        } else {
+                            // Update existing pitch to the clicked height (shortcut for dragging)
+                            unit.pitches[meta.pIdx] = noteName;
+                        }
+                        setDirty(true);
+                        render();
+                    }
+                };
             }
         }
 
@@ -1567,16 +1636,7 @@
                 panel.style.width = newVal + 'px';
             });
 
-            // Header vs Content Resizer (Vertical)
-            setupResizer('header-resizer', '.pinned-header', 'bottom', (val) => {
-                const header = document.querySelector('.pinned-header');
-                const row = header.querySelector('.chart-nav-row');
-                // Adjust the chart row height specifically as it's the main variable part
-                const currentHeight = header.offsetHeight;
-                const delta = val - currentHeight;
-                const newRowHeight = Math.max(150, Math.min(row.offsetHeight + delta, 600));
-                row.style.height = newRowHeight + 'px';
-            });
+
         }
 
         function setupResizer(resizerId, targetId, side, onResize) {

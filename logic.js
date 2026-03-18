@@ -18,8 +18,8 @@ const Logic = {
             let isSpace = !!m[3];
             let type = m[1] ? 'kanji' : (m[2] ? 'english' : (isSpace ? 'space' : 'kana'));
 
-            // Default pitch C4
-            const defaultPitch = "c4";
+            // Default pitch empty (no pitch)
+            const defaultPitch = "";
 
             // English defaults to 1 note
             const len = (type === 'english') ? 1 : m[0].length;

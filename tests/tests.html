@@ -125,6 +125,11 @@
             const res1 = Logic.parseLine("Stellar");
             runTest("PARSER", "English word 'Stellar' defaults to 1 note", res1.length === 1 && res1[0].pitches.length === 1);
             runTest("PARSER", "English word 'Stellar' identified as 'english'", res1[0].type === 'english');
+            runTest("PARSER", "English word 'Stellar' pitch defaults to empty string", res1[0].pitches[0] === "");
+
+            // ADDED: Japanese Default Pitch Test
+            const resJapanese = Logic.parseLine("テスト");
+            runTest("PARSER", "Japanese word pitch defaults to empty string", resJapanese[0].pitches[0] === "");
 
             // --- SUITE 2: Sentence Parsing ---
             const res2 = Logic.parseLine("Hello World");

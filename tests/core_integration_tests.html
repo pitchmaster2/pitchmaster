@@ -84,7 +84,7 @@
 
     <!-- Load Local App for Manipulation -->
     <iframe id="app-frame" src="../index.html"
-        style="width: 1px; height: 1px; border: none; position: absolute; left: -100px;"></iframe>
+        style="width: 1200px; height: 800px; border: none; position: absolute; left: -2000px; top: -2000px;"></iframe>
 
     <script>
         const results = document.getElementById('results');
@@ -137,11 +137,11 @@
                 
                 win.createNew(); // Starts song
 
-                const txt = win.document.getElementById('lyric-in');
+                const txt = win.document.getElementById('modal-lyric-in');
                 txt.value = "Hello World";
                 
-                // processLyrics triggers Confirm. Mock approved.
-                win.processLyrics(); 
+                // applyLyricsModal triggers workflow
+                win.applyLyricsModal(); 
 
                 // Use win.eval to access variables declared with let/const in index.html
                 const evalVal = (expr) => win.eval(expr);
@@ -183,6 +183,36 @@
                 // --- TEST 5: DATA_UPDATES - Update Pitch ---
                 win.updatePitch(0, tarUIdx, 0, "e4");
                 runTest("DATA_UPDATES", "Pitch updated", evalVal(`songs[currentId].lines[0].units[${tarUIdx}].pitches[0]`) === "e4");
+
+                // --- TEST 6: CONFIRMATION_BYPASS ---
+                // Setup: Empty Song
+                evalVal("songs[currentId].lines = []");
+                let confirmCalled = false;
+                win.showConfirm = () => { confirmCalled = true; }; // record call without executing
+                
+                win.document.getElementById('modal-lyric-in').value = "Test New";
+                win.applyLyricsModal();
+                runTest("UX", "Confirmation bypassed for empty song", confirmCalled === false);
+
+                // Setup: Non-Empty Song (now has 1 line from previous action)
+                confirmCalled = false;
+                win.document.getElementById('modal-lyric-in').value = "Test Update";
+                win.applyLyricsModal();
+                runTest("UX", "Confirmation triggered for non-empty song", confirmCalled === true);
+
+                // --- TEST 7: MODAL POSITIONING ---
+                // Setup: Open Modal near bottom of viewport
+                const vHeight = win.innerHeight;
+                const clickY = vHeight - 50; 
+                win.openModal(0, 0, 0, null, { x: 500, y: clickY });
+                
+                const modal = win.document.getElementById('settings-modal');
+                const modalTop = modal.offsetTop;
+                const modalHeight = modal.offsetHeight;
+                
+                // Assert modal bottom fits within viewport bounded height
+                runTest("UX", "Modal stays within bottom viewport boundary", (modalTop + modalHeight) <= (vHeight + win.scrollY + 5));
+                win.closeModal();
 
                 // Summary Render
                 if (fails === 0) {
