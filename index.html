@@ -678,11 +678,15 @@
             pitchInput.onkeydown = (e) => {
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
-                    const currentVal = (pitchInput.value + (sharpCheck.checked ? '#' : '')).toLowerCase();
+                    const base = pitchInput.value;
+                    if (base.length < 2) return;
+                    
+                    const currentVal = (base[0] + (sharpCheck.checked ? '#' : '') + base[1]).toLowerCase();
                     const newVal = Logic.getNextPitch(currentVal, e.key === 'ArrowUp' ? 1 : -1);
                     if (newVal !== currentVal) {
                         pitchInput.value = newVal.replace('#', '').toUpperCase();
                         sharpCheck.checked = newVal.includes('#');
+                        if (updateSharpState) updateSharpState(); // sync for E/B restriction
                         updatePitch(lIdx, uIdx, pIdx, newVal);
                     }
                 }
@@ -1204,6 +1208,9 @@
                         maintainAspectRatio: false,
                         interaction: { mode: 'nearest', axis: 'y' },
                         onClick: (e, elements, chart) => {
+                            const modal = document.getElementById('settings-modal');
+                            if (modal && modal.style.display === 'block') return;
+
                             if (elements.length > 0) {
                                 const index = elements[0].index;
                                 const meta = currentDataMeta[index];
@@ -1228,6 +1235,10 @@
                             dragData: {
                                 round: 0,
                                 showTooltip: true,
+                                onDragStart: function (e, datasetIndex, index) {
+                                    const modal = document.getElementById('settings-modal');
+                                    if (modal && modal.style.display === 'block') return false;
+                                },
                                 onDrag: function (e, datasetIndex, index, value) {
                                     e.target.style.cursor = 'grabbing';
                                 },
