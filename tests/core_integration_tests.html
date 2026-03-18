@@ -85,6 +85,9 @@
     <!-- Load Local App for Manipulation -->
     <iframe id="app-frame" src="../index.html"
         style="width: 1200px; height: 800px; border: none; position: absolute; left: -2000px; top: -2000px;"></iframe>
+    <script>
+        document.getElementById('app-frame').src = "../index.html?v=" + Date.now();
+    </script>
 
     <script>
         const results = document.getElementById('results');
@@ -220,31 +223,53 @@
                 const sharpIn = win.document.getElementById('modal-pitch-sharp');
 
                 // 8a: Input Scrubbing
-                pitchIn.value = "F#4";
-                pitchIn.dispatchEvent(new Event('input'));
-                runTest("PITCH_VALIDATION", "Modal Input scrubs sharp (F#4 -> F4)", pitchIn.value === "F4");
+                const inpEvent = new win.Event('input');
+                
+                if (pitchIn) {
+                    pitchIn.value = "F#4";
+                    pitchIn.dispatchEvent(inpEvent);
+                    runTest("PITCH_VALIDATION", "Modal Input scrubs sharp (F#4 -> F4)", pitchIn.value === "F4");
 
-                pitchIn.value = "G FLAT 4";
-                pitchIn.dispatchEvent(new Event('input'));
-                runTest("PITCH_VALIDATION", "Modal Input filters complex invalid string (G FLAT 4 -> GF)", pitchIn.value === "GF");
+                    pitchIn.value = "G FLAT 4";
+                    pitchIn.dispatchEvent(inpEvent);
+                    runTest("PITCH_VALIDATION", "Modal Input filters complex invalid string (G FLAT 4 -> GF)", pitchIn.value === "GF");
+                } else {
+                    runTest("PITCH_VALIDATION", "Modal Input found", false);
+                }
 
                 // 8b: Checkbox Sync
-                pitchIn.value = "C4";
-                pitchIn.dispatchEvent(new Event('input')); 
-                sharpIn.checked = true;
-                sharpIn.dispatchEvent(new Event('change')); 
-                
-                runTest("PITCH_VALIDATION", "Checkbox triggers Sharp update (C4 + # -> C#4)", evalVal("songs[currentId].lines[0].units[0].pitches[0]") === "c#4");
+                if (sharpIn && pitchIn) {
+                    pitchIn.value = "C4";
+                    pitchIn.dispatchEvent(inpEvent); 
+                    
+                    sharpIn.checked = true;
+                    sharpIn.dispatchEvent(new win.Event('change')); 
+                    
+                    runTest("PITCH_VALIDATION", "Checkbox triggers Sharp update (C4 + # -> C#4)", evalVal("songs[currentId].lines[0].units[0].pitches[0]") === "c#4");
+                } else {
+                    runTest("PITCH_VALIDATION", "Checkbox found", false);
+                }
+
+                // 8d: Half Note Sharp Restriction (E/B)
+                if (pitchIn && sharpIn) {
+                    pitchIn.value = "E4";
+                    pitchIn.dispatchEvent(inpEvent); 
+                    runTest("PITCH_VALIDATION", "E4 disables sharp checkbox", sharpIn.disabled === true);
+
+                    pitchIn.value = "C4";
+                    pitchIn.dispatchEvent(inpEvent);
+                    runTest("PITCH_VALIDATION", "C4 enables sharp checkbox", sharpIn.disabled === false);
+                }
 
                 // 8c: Grid Input validation
                 const gridDiv = win.document.querySelector(`#unit-bottom-0-0 div`);
                 if (gridDiv) {
                     const gridInp = gridDiv.querySelector('.pitch-input');
-                    const gridChk = gridDiv.querySelector('.sharp-checkbox');
-                    
-                    gridInp.value = "D#5";
-                    gridInp.dispatchEvent(new Event('input'));
-                    runTest("PITCH_VALIDATION", "Grid Input scrubs sharp (D#5 -> D5)", gridInp.value === "D5");
+                    if (gridInp) {
+                        gridInp.value = "D#5";
+                        gridInp.dispatchEvent(new win.Event('input'));
+                        runTest("PITCH_VALIDATION", "Grid Input scrubs sharp (D#5 -> D5)", gridInp.value === "D5");
+                    }
                 }
 
                 win.closeModal();

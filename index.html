@@ -645,18 +645,32 @@
             pitchInput.value = fullPitch.replace('#', '').toUpperCase();
             sharpCheck.checked = fullPitch.includes('#');
 
+            const updateSharpState = () => {
+                const base = pitchInput.value.toUpperCase();
+                if (base.startsWith('E') || base.startsWith('B')) {
+                    sharpCheck.disabled = true;
+                    sharpCheck.checked = false;
+                } else {
+                    sharpCheck.disabled = false;
+                }
+            };
+
             const syncPitch = () => {
-                const base = pitchInput.value;
+                updateSharpState();
+                const base = pitchInput.value.toUpperCase();
                 if (!base || base.length < 2) return;
                 const full = base[0] + (sharpCheck.checked ? '#' : '') + base[1];
                 updatePitch(lIdx, uIdx, pIdx, full);
             };
+
+            updateSharpState(); // set initial state
 
             pitchInput.onchange = syncPitch;
             sharpCheck.onchange = syncPitch;
             
             pitchInput.oninput = function() {
                 this.value = this.value.toUpperCase().replace(/[^A-G0-9]/g, '').slice(0, 2);
+                updateSharpState();
                 syncPitch();
             };
 
@@ -917,6 +931,7 @@
                                 onfocus="this.select()">
                             <input type="checkbox" class="sharp-checkbox" style="cursor: pointer;" title="Sharp (#)"
                                 ${p.includes('#') ? 'checked' : ''}
+                                ${(p.toUpperCase().startsWith('E') || p.toUpperCase().startsWith('B')) ? 'disabled' : ''}
                                 onchange="updatePitchGrid(${lIdx}, ${uIdx}, ${pIdx}, this)">
                         </div>
                       </div>`;
@@ -1005,7 +1020,16 @@
             const div = elem.closest('div');
             const inp = div.querySelector('.pitch-input');
             const chk = div.querySelector('.sharp-checkbox');
-            const base = inp.value;
+            const base = inp.value.toUpperCase();
+            
+            // Edge case: E and B don't have sharps
+            if (base.startsWith('E') || base.startsWith('B')) {
+                chk.disabled = true;
+                chk.checked = false;
+            } else {
+                chk.disabled = false;
+            }
+
             if (base.length < 2) return;
             const val = base[0] + (chk.checked ? '#' : '') + base[1];
             updatePitch(l, u, p, val);
